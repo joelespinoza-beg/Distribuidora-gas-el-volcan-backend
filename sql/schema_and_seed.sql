@@ -4,15 +4,52 @@
 -- Incluye creación de tablas, restricciones de integridad y datos iniciales
 -- =============================================================================
 
+-- Roles persistidos para validar las asignaciones en la base de datos.
+CREATE TABLE IF NOT EXISTS roles (
+    nombre VARCHAR(20) PRIMARY KEY
+);
+
+INSERT INTO roles (nombre) VALUES
+    ('ADMIN'),
+    ('OPERADORA'),
+    ('REPARTIDOR'),
+    ('CLIENTE')
+ON CONFLICT (nombre) DO NOTHING;
+
 -- 1. Tabla de Usuarios (clientes, operadoras, repartidores y administradores)
 CREATE TABLE IF NOT EXISTS usuarios (
     id SERIAL PRIMARY KEY,
     nombre VARCHAR(120) NOT NULL,
     email VARCHAR(160) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    rol VARCHAR(20) NOT NULL DEFAULT 'CLIENTE'
-        CHECK (rol IN ('CLIENTE', 'OPERADORA', 'REPARTIDOR', 'ADMIN')),
+    rol VARCHAR(20) NOT NULL DEFAULT 'CLIENTE',
     repartidor_codigo VARCHAR(10) NULL,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    creado_en TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Actualiza de manera segura las bases existentes creadas antes de la tabla roles.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'usuarios_rol_fk'
+    ) THEN
+        ALTER TABLE usuarios
+            ADD CONSTRAINT usuarios_rol_fk
+            FOREIGN KEY (rol) REFERENCES roles(nombre) ON DELETE RESTRICT;
+    END IF;
+END
+$$;
+
+-- Perfil de cliente separado de la cuenta y de la copia histórica guardada en pedidos.
+CREATE TABLE IF NOT EXISTS clientes (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER UNIQUE NULL REFERENCES usuarios(id) ON DELETE SET NULL,
+    nombre VARCHAR(120) NOT NULL,
+    telefono VARCHAR(30) NULL,
+    direccion VARCHAR(250) NULL,
+    tipo_cliente VARCHAR(20) NOT NULL DEFAULT 'residencial'
+        CHECK (tipo_cliente IN ('residencial', 'comercial')),
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     creado_en TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

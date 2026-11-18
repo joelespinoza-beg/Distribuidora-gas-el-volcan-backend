@@ -24,14 +24,26 @@ Este repositorio contiene exclusivamente el **backend API REST**, la capa de per
 | Componente / Funcionalidad | Estado | Detalle de verificación |
 |---|---|---|
 | **Repositorio y estructura por capas (`src/`)** | **Implementado y probado** | Separación en `routes`, `controllers`, `services`, `repositories`, `middlewares`, `models` y `config`. |
-| **Esquema SQL y datos semilla (`sql/schema_and_seed.sql`)** | **Implementado y probado** | Tablas `usuarios`, `repartidores`, `productos`, `pedidos` y `detalle_pedidos` con PK, FK y restricciones `CHECK`/`UNIQUE`. |
+| **Esquema SQL y datos semilla (`sql/schema_and_seed.sql`)** | **Implementado; migración pendiente de ejecutar en RDS** | Tablas `usuarios`, `roles`, `clientes`, `repartidores`, `productos`, `pedidos` y `detalle_pedidos` con PK, FK y restricciones `CHECK`/`UNIQUE`. |
 | **Conexión a PostgreSQL (`pg.Pool`) + modo local** | **Implementado y probado** | Configuración lista para Amazon RDS mediante variables de entorno (`.env`) y respaldo en memoria para pruebas automatizadas. |
-| **Autenticación JWT y hash BCrypt (`/api/auth/*`)** | **Implementado y probado** | `POST /api/auth/register`, `POST /api/auth/login` y `GET /api/auth/me` con firma `HS256`, validación de `iss`/`aud`/`exp` y rate limit. |
-| **CRUD de Catálogo de Productos (`/api/productos/*`)** | **Implementado y probado** | Lectura pública y creación/edición/eliminación restringida a rol `ADMIN`, con validación de integridad referencial (`409`). |
-| **Flujo de Pedidos y Despacho (`/api/pedidos/*`)** | **Implementado y probado** | Cálculo de precios en servidor según `tipoCliente`, descuento atómico de stock, asignación de repartidor, cambio de estado y protección anti-IDOR. |
-| **Documentación viva Swagger UI (`/api-docs`)** | **Implementado y probado** | Especificación OpenAPI 3.0.3 interactiva con esquema `BearerAuth` y ejemplos del negocio. |
-| **Suite de pruebas automatizadas (`tests/api.test.js`)** | **Implementado y probado** | 7 casos integrales ejecutados con `npm test` (`pass 7 / fail 0`). |
-| **Consumo desde el repositorio Frontend React** | **Diseñado / Pendiente de fusión en repo frontend** | Los contratos JSON coinciden con `productoService`, `pedidoService` y `usuarioService`; resta reemplazar `localStorage` por `fetch` en el repositorio React. |
+| **Autenticación JWT y hash BCrypt (`/api/v1/auth/*`)** | **Implementado; regresión pendiente de ejecutar** | `POST /api/v1/auth/register`, `POST /api/v1/auth/login` y `GET /api/v1/auth/me` con firma `HS256`, validación de `iss`/`aud`/`exp` y rate limit. |
+| **CRUD de usuarios y roles (`/api/v1/usuarios`)** | **Implementado; pruebas pendientes de ejecutar** | Rutas protegidas, cuatro roles persistidos, modificación segura y desactivación que conserva los pedidos. |
+| **CRUD de clientes (`/api/v1/clientes`)** | **Implementado; pruebas pendientes de ejecutar** | Perfiles vinculados opcionalmente a cuentas, acceso propio o administrativo y datos de pedido independientes del perfil. |
+| **CRUD de Catálogo de Productos (`/api/v1/productos/*`)** | **Implementado y probado** | Lectura pública y creación/edición/eliminación restringida a rol `ADMIN`, con validación de integridad referencial (`409`). |
+| **Flujo de Pedidos y Despacho (`/api/v1/pedidos/*`)** | **Implementado y probado** | Cálculo de precios en servidor según `tipoCliente`, descuento atómico de stock, asignación de repartidor, cambio de estado y protección anti-IDOR. |
+| **Documentación viva Swagger UI (`/api-docs`)** | **Implementada; verificación pendiente** | Especificación OpenAPI 3.0.3 interactiva con rutas canónicas `/api/v1`, esquema `BearerAuth` y ejemplos del negocio. |
+| **Suite de pruebas automatizadas (`tests/api.test.js`)** | **Ampliada; ejecución pendiente** | Se agregaron casos de usuarios, clientes, roles y rutas v1; ejecutar `npm test` cuando Node.js esté disponible. |
+| **Consumo desde el repositorio Frontend React** | **Pendiente (fuera de este cambio backend)** | Axios/fetch, persistencia de sesión tras recarga y restricciones de interfaz; lista de trabajo en `docs/FRONTEND_INTEGRATION.md`. |
+
+### Alcance del Desarrollador 1 y versionado
+
+La base de datos mantiene `usuarios`, `roles` y `clientes` separados. Los roles del caso son `ADMIN`, `OPERADORA`, `REPARTIDOR` y `CLIENTE`; el registro público siempre asigna `CLIENTE`. Las operaciones administrativas de usuario y cliente requieren JWT y rol `ADMIN`, mientras que un cliente solo puede consultar o modificar su perfil propio.
+
+Las rutas canónicas de la API usan el prefijo `/api/v1`. Para facilitar la transición del resto del equipo, el prefijo anterior `/api` se conserva como alias temporal con los mismos permisos; se debe usar `/api/v1` en nuevos consumidores. Swagger documenta las rutas canónicas versionadas.
+
+El recordatorio de trabajo pendiente en React está en [`docs/FRONTEND_INTEGRATION.md`](./docs/FRONTEND_INTEGRATION.md). La integración de Axios, persistencia de sesión, formularios y restricciones visuales queda pendiente en el repositorio frontend.
+
+Rutas de usuarios y clientes: `GET/POST /api/v1/usuarios`, `GET/PATCH/DELETE /api/v1/usuarios/:id`, `GET /api/v1/usuarios/roles`, `PATCH /api/v1/usuarios/:id/rol`, `GET/POST /api/v1/clientes`, `GET/PATCH/DELETE /api/v1/clientes/:id` y `GET/PATCH /api/v1/clientes/me`. `DELETE /api/v1/usuarios/:id` desactiva la cuenta; no elimina pedidos ni su historial. Swagger está disponible en `/api-docs`.
 
 ---
 
@@ -73,10 +85,10 @@ En la Unidad 2, el frontend React (`Distribuidora-Gas-El-Volcan-React`) almacena
 
 | Servicio en React (`src/services/`) | Pantallas que lo utilizan | Endpoints del Backend que reemplazan a `localStorage` | Qué cambia en la responsabilidad |
 |---|---|---|---|
-| `productoService.js` (`listarProductos`, `obtenerProducto`, `crearProducto`, `actualizarProducto`, `eliminarProducto`) | `Inicio.jsx`, `Catalogo.jsx`, `Categorias.jsx`, `Ofertas.jsx`, `Producto.jsx`, `NuevoPedido.jsx`, `AdminProductos.jsx` | `GET /api/productos`<br>`GET /api/productos/:id`<br>`POST /api/productos`<br>`PUT /api/productos/:id`<br>`DELETE /api/productos/:id` | El catálogo deja de inicializarse en `localStorage` desde `src/data/productos.js` y se consulta desde PostgreSQL. Las mutaciones exigen JWT con rol `ADMIN`. |
-| `pedidoService.js` (`listarPedidos`, `obtenerPedido`, `crearPedido`, `asignarRepartidor`, `cambiarEstado`) | `Checkout.jsx`, `PedidoConfirmadoONoRealizado.jsx`, `SeguimientoPedido.jsx`, `Operadora.jsx`, `Repartidor.jsx` | `GET /api/pedidos`<br>`GET /api/pedidos/:id`<br>`POST /api/pedidos`<br>`PATCH /api/pedidos/:id/asignar`<br>`PATCH /api/pedidos/:id/estado` | El servidor calcula `precioUnitario` y `total` reales según `tipoCliente`, descuenta el `stock` en la base de datos y filtra los pedidos según el rol y la propiedad del usuario autenticado. |
-| `usuarioService.js` (`registrarUsuario`, `autenticar`, `listarUsuarios`) | `Registro.jsx`, `Login.jsx`, `Navbar.jsx` | `POST /api/auth/register`<br>`POST /api/auth/login`<br>`GET /api/auth/me` | Se elimina por completo el guardado de claves en texto plano en `localStorage`. El servidor almacena solo el hash BCrypt y emite un token JWT firmado. |
-| `carritoService.js` (`listarCarrito`, `agregarAlCarrito`, `cambiarCantidadCarrito`, `quitarDelCarrito`, `vaciarCarrito`) | `Carrito.jsx`, `Catalogo.jsx`, `Checkout.jsx` | Permanece en el navegador hasta confirmar en `POST /api/pedidos` | El carrito sigue siendo un estado temporal de la solicitud en curso en el cliente, pero al enviarse en `/checkout` el backend revalida existencia, stock disponible y precios oficiales. |
+| `productoService.js` (`listarProductos`, `obtenerProducto`, `crearProducto`, `actualizarProducto`, `eliminarProducto`) | `Inicio.jsx`, `Catalogo.jsx`, `Categorias.jsx`, `Ofertas.jsx`, `Producto.jsx`, `NuevoPedido.jsx`, `AdminProductos.jsx` | `GET /api/v1/productos`<br>`GET /api/v1/productos/:id`<br>`POST /api/v1/productos`<br>`PUT /api/v1/productos/:id`<br>`DELETE /api/v1/productos/:id` | El catálogo deja de inicializarse en `localStorage` desde `src/data/productos.js` y se consulta desde PostgreSQL. Las mutaciones exigen JWT con rol `ADMIN`. |
+| `pedidoService.js` (`listarPedidos`, `obtenerPedido`, `crearPedido`, `asignarRepartidor`, `cambiarEstado`) | `Checkout.jsx`, `PedidoConfirmadoONoRealizado.jsx`, `SeguimientoPedido.jsx`, `Operadora.jsx`, `Repartidor.jsx` | `GET /api/v1/pedidos`<br>`GET /api/v1/pedidos/:id`<br>`POST /api/v1/pedidos`<br>`PATCH /api/v1/pedidos/:id/asignar`<br>`PATCH /api/v1/pedidos/:id/estado` | El servidor calcula `precioUnitario` y `total` reales según `tipoCliente`, descuenta el `stock` en la base de datos y filtra los pedidos según el rol y la propiedad del usuario autenticado. |
+| `usuarioService.js` (`registrarUsuario`, `autenticar`, `listarUsuarios`) | `Registro.jsx`, `Login.jsx`, `Navbar.jsx` | `POST /api/v1/auth/register`<br>`POST /api/v1/auth/login`<br>`GET /api/v1/auth/me` | Se elimina por completo el guardado de claves en texto plano en `localStorage`. El servidor almacena solo el hash BCrypt y emite un token JWT firmado. |
+| `carritoService.js` (`listarCarrito`, `agregarAlCarrito`, `cambiarCantidadCarrito`, `quitarDelCarrito`, `vaciarCarrito`) | `Carrito.jsx`, `Catalogo.jsx`, `Checkout.jsx` | Permanece en el navegador hasta confirmar en `POST /api/v1/pedidos` | El carrito sigue siendo un estado temporal de la solicitud en curso en el cliente, pero al enviarse en `/checkout` el backend revalida existencia, stock disponible y precios oficiales. |
 
 ### 2.2. Comportamiento de la interfaz React ante los estados de la API
 
@@ -92,7 +104,7 @@ En la Unidad 2, el frontend React (`Distribuidora-Gas-El-Volcan-React`) almacena
 ### 2.3. Recorrido completo de una operación del caso: Confirmación de pedido en `/checkout`
 
 1. **Pantalla / Formulario en React (`Checkout.jsx`):** El cliente autenticado revisa las líneas de su carrito (ej. `2 × Cilindro GLP 15 kg`, código `CL003`) y completa `nombre`, `email`, `telefono`, `direccion` y `zona` (*Zona Centro*). React ejecuta la validación preliminar (`validarObligatorio`, `validarEmail`, `validarTelefono`) para dar retroalimentación inmediata.
-2. **Solicitud HTTP a la API:** El servicio `pedidoService.crearPedido()` envía `POST /api/pedidos` con el encabezado `Authorization: Bearer <accessToken>` y el cuerpo JSON con los datos de despacho y la lista `productos: [{ "id": "CL003", "cantidad": 2 }]`.
+2. **Solicitud HTTP a la API:** El servicio `pedidoService.crearPedido()` envía `POST /api/v1/pedidos` con el encabezado `Authorization: Bearer <accessToken>` y el cuerpo JSON con los datos de despacho y la lista `productos: [{ "id": "CL003", "cantidad": 2 }]`.
 3. **Capa de Seguridad (`auth.middleware.js`):** El middleware `verificarToken` comprueba la firma `HS256` del JWT, su vigencia (`exp`), emisor (`iss`) y destinatario (`aud`), verifica en la base de datos que el usuario siga activo y adjunta `req.usuario` (`id`, `rol`). Luego `requerirRoles` confirma que el rol esté autorizado.
 4. **Controlador (`pedido.controller.js`):** Recibe `req.body` y `req.usuario`, delega la operación a `pedidoService.crearPedido(req.body, req.usuario)` y prepara la respuesta HTTP.
 5. **Servicio y Reglas del Negocio (`pedido.service.js`):**
@@ -113,7 +125,9 @@ El modelo relacional utiliza los nombres reales del dominio de **Distribuidora d
 
 ```mermaid
 erDiagram
+    ROLES ||--o{ USUARIOS : "asigna (0..N)"
     USUARIOS ||--o{ PEDIDOS : "realiza (0..N)"
+    USUARIOS o|--o| CLIENTES : "vincula (0..1)"
     REPARTIDORES ||--o{ PEDIDOS : "despacha (0..N)"
     PEDIDOS ||--|{ DETALLE_PEDIDOS : "contiene (1..N)"
     PRODUCTOS ||--o{ DETALLE_PEDIDOS : "referenciado_en (0..N)"
@@ -123,8 +137,23 @@ erDiagram
         varchar nombre "NOT NULL"
         varchar email "UNIQUE NOT NULL"
         varchar password_hash "NOT NULL (BCrypt)"
-        varchar rol "NOT NULL CHECK (CLIENTE, OPERADORA, REPARTIDOR, ADMIN)"
+        varchar rol FK "NOT NULL REFERENCES roles(nombre)"
         varchar repartidor_codigo "NULL (ej: R1)"
+        boolean activo "NOT NULL DEFAULT TRUE"
+        timestamptz creado_en "NOT NULL"
+    }
+
+    ROLES {
+        varchar nombre PK "ADMIN, OPERADORA, REPARTIDOR, CLIENTE"
+    }
+
+    CLIENTES {
+        int id PK "SERIAL NOT NULL"
+        int usuario_id FK "NULL UNIQUE REFERENCES usuarios(id)"
+        varchar nombre "NOT NULL"
+        varchar telefono "NULL"
+        varchar direccion "NULL"
+        varchar tipo_cliente "NOT NULL CHECK (residencial, comercial)"
         boolean activo "NOT NULL DEFAULT TRUE"
         timestamptz creado_en "NOT NULL"
     }
@@ -191,7 +220,7 @@ erDiagram
 - **Cantidades, montos y dominios válidos (`CHECK`):**
   - `precio_residencial > 0`, `precio_comercial > 0`, `precio_unitario > 0`, `subtotal > 0` y `total > 0`.
   - `productos.stock >= 0` (el stock nunca puede quedar negativo) y `detalle_pedidos.cantidad >= 1`.
-  - `usuarios.rol IN ('CLIENTE', 'OPERADORA', 'REPARTIDOR', 'ADMIN')`.
+  - `usuarios.rol` referencia a `roles.nombre`; el catálogo persiste `ADMIN`, `OPERADORA`, `REPARTIDOR` y `CLIENTE`.
   - `pedidos.estado IN ('pendiente', 'asignado', 'en_camino', 'entregado')`.
 - **Relaciones obligatorias y comportamiento al eliminar registros relacionados:**
   - `detalle_pedidos.producto_id -> productos(id) ON DELETE RESTRICT`: **No se permite eliminar un producto que ya figura en pedidos históricos.** El servicio verifica esta condición y devuelve `409 Conflict` para no destruir la trazabilidad de ventas pasadas.
@@ -200,7 +229,7 @@ erDiagram
 
 ### 3.4. Paso de datos simulados a datos iniciales de prueba (Seeders)
 
-Al iniciar el backend (`sql/schema_and_seed.sql` y `src/config/seedData.js`), los datos que antes vivían en `src/data/productos.js` (los 14 productos desde `CL001` hasta `AC003`) y `src/data/repartidores.js` (`R1` Pedro Rojas, `R2` Luis Contreras, `R3` Marcos Fuentes) se cargan de forma idempotente (`ON CONFLICT DO NOTHING`), junto con 4 cuentas iniciales de prueba (una por cada rol del ERS: `ADMIN`, `OPERADORA`, `REPARTIDOR`, `CLIENTE`).
+El esquema (`sql/schema_and_seed.sql`) crea de forma idempotente los cuatro roles. En modo memoria se mantienen cuentas de demostración para pruebas; **no se crean usuarios/contraseñas de demostración en PostgreSQL/RDS**. Para una instalación PostgreSQL, configura `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_PASSWORD` para crear el primer administrador; los usuarios operativos restantes se gestionan autenticado como `ADMIN`. El catálogo y los repartidores conservan sus datos iniciales mediante el seeder existente.
 
 - **Qué persiste tras reiniciar el backend:** Conectado a **PostgreSQL en Amazon RDS**, toda la información (nuevos usuarios registrados, pedidos creados, cambios de estado de reparto, asignaciones y descuentos de stock en el catálogo) persiste de manera permanente en el almacenamiento de RDS aunque el proceso Node.js o la instancia EC2 se reinicien.
 
@@ -260,7 +289,7 @@ flowchart LR
 | **Modelos y datos de entrada/salida** | `src/models/validators.js`<br>`sql/schema_and_seed.sql` | Definen la estructura persistente de las entidades, validan los campos recibidos en la API y filtran los objetos de salida (`sanitizarUsuarioSalida`) para que jamás se expongan `password_hash` ni datos internos. |
 | **Seguridad** | `src/middlewares/auth.middleware.js`<br>`src/middlewares/rateLimit.middleware.js` | Comprueban credenciales con BCrypt, emiten y verifican tokens JWT (`HS256`, `iss`, `aud`, `exp`), controlan el límite de intentos de login y verifican los permisos por rol antes de ejecutar acciones protegidas. |
 
-### 4.3. Asignación de validaciones y cálculo de campos en el servidor (`POST /api/pedidos`)
+### 4.3. Asignación de validaciones y cálculo de campos en el servidor (`POST /api/v1/pedidos`)
 
 El frontend **no decide por sí solo el precio final, el rol del usuario ni la propiedad de un registro**:
 
@@ -281,27 +310,31 @@ El frontend **no decide por sí solo el precio final, el rol del usuario ni la p
 
 | Método y Ruta | Estado actual | Permisos / Roles | Pantalla React que lo consume | Entidades involucradas |
 |---|---|---|---|---|
-| `GET /api/saludo` | **Implementado (Funciona)** | Público | Prueba de conectividad (Guía 18) | N/A |
-| `GET /api/health` | **Implementado (Funciona)** | Público | Verificación de estado del servidor | N/A |
-| `POST /api/auth/register` | **Implementado (Funciona)** | Público (asigna rol `CLIENTE`) | `Registro.jsx` (`FormularioRegistro`) | `usuarios` |
-| `POST /api/auth/login` | **Implementado (Funciona)** | Público (con rate-limit) | `Login.jsx` (`FormularioLogin`) | `usuarios` |
-| `GET /api/auth/me` | **Implementado (Funciona)** | Autenticado (cualquier rol) | `Navbar.jsx` / `App.jsx` | `usuarios` |
-| `GET /api/productos` | **Implementado (Funciona)** | Público | `Inicio.jsx`, `Catalogo.jsx`, `Categorias.jsx`, `Ofertas.jsx`, `NuevoPedido.jsx`, `AdminProductos.jsx` | `productos` |
-| `GET /api/productos/:id` | **Implementado (Funciona)** | Público | `Producto.jsx` (Detalle) | `productos` |
-| `POST /api/productos` | **Implementado (Funciona)** | Solo `ADMIN` | `AdminProductos.jsx` (`FormularioProducto`) | `productos` |
-| `PUT /api/productos/:id` | **Implementado (Funciona)** | Solo `ADMIN` | `AdminProductos.jsx` (`FormularioProducto`) | `productos` |
-| `DELETE /api/productos/:id` | **Implementado (Funciona)** | Solo `ADMIN` | `AdminProductos.jsx` (`TablaProductos`) | `productos`, `detalle_pedidos` |
-| `GET /api/pedidos` | **Implementado (Funciona)** | Autenticado (filtrado por rol y propiedad) | `Operadora.jsx`, `Repartidor.jsx`, `SeguimientoPedido.jsx` | `pedidos`, `detalle_pedidos` |
-| `GET /api/pedidos/:id` | **Implementado (Funciona)** | Autenticado (con regla anti-IDOR) | `SeguimientoPedido.jsx`, `PedidoConfirmadoONoRealizado.jsx` | `pedidos`, `detalle_pedidos` |
-| `POST /api/pedidos` | **Implementado (Funciona)** | `CLIENTE`, `OPERADORA`, `ADMIN` | `Checkout.jsx`, `NuevoPedido.jsx` | `pedidos`, `detalle_pedidos`, `productos` |
-| `PATCH /api/pedidos/:id/asignar` | **Implementado (Funciona)** | Solo `OPERADORA`, `ADMIN` | `Operadora.jsx` (`ListaPedidosDelDia`) | `pedidos`, `repartidores` |
-| `PATCH /api/pedidos/:id/estado` | **Implementado (Funciona)** | `OPERADORA`, `REPARTIDOR` (propio), `ADMIN` | `Operadora.jsx`, `Repartidor.jsx` (`ListaEntregas`) | `pedidos` |
-| `GET /api/repartidores` | **Implementado (Funciona)** | `OPERADORA`, `REPARTIDOR`, `ADMIN` | `Operadora.jsx`, `Repartidor.jsx` | `repartidores` |
-| `PATCH /api/usuarios/:id/rol` | **Propuesto (Siguiente etapa)** | Solo `ADMIN` | Panel futuro de gestión de personal | `usuarios` |
+| `GET /api/v1/saludo` | **Implementado (Funciona)** | Público | Prueba de conectividad (Guía 18) | N/A |
+| `GET /api/v1/health` | **Implementado (Funciona)** | Público | Verificación de estado del servidor | N/A |
+| `POST /api/v1/auth/register` | **Implementado (Funciona)** | Público (asigna rol `CLIENTE`) | `Registro.jsx` (`FormularioRegistro`) | `usuarios` |
+| `POST /api/v1/auth/login` | **Implementado (Funciona)** | Público (con rate-limit) | `Login.jsx` (`FormularioLogin`) | `usuarios` |
+| `GET /api/v1/auth/me` | **Implementado (Funciona)** | Autenticado (cualquier rol) | `Navbar.jsx` / `App.jsx` | `usuarios` |
+| `GET /api/v1/productos` | **Implementado (Funciona)** | Público | `Inicio.jsx`, `Catalogo.jsx`, `Categorias.jsx`, `Ofertas.jsx`, `NuevoPedido.jsx`, `AdminProductos.jsx` | `productos` |
+| `GET /api/v1/productos/:id` | **Implementado (Funciona)** | Público | `Producto.jsx` (Detalle) | `productos` |
+| `POST /api/v1/productos` | **Implementado (Funciona)** | Solo `ADMIN` | `AdminProductos.jsx` (`FormularioProducto`) | `productos` |
+| `PUT /api/v1/productos/:id` | **Implementado (Funciona)** | Solo `ADMIN` | `AdminProductos.jsx` (`FormularioProducto`) | `productos` |
+| `DELETE /api/v1/productos/:id` | **Implementado (Funciona)** | Solo `ADMIN` | `AdminProductos.jsx` (`TablaProductos`) | `productos`, `detalle_pedidos` |
+| `GET /api/v1/pedidos` | **Implementado (Funciona)** | Autenticado (filtrado por rol y propiedad) | `Operadora.jsx`, `Repartidor.jsx`, `SeguimientoPedido.jsx` | `pedidos`, `detalle_pedidos` |
+| `GET /api/v1/pedidos/:id` | **Implementado (Funciona)** | Autenticado (con regla anti-IDOR) | `SeguimientoPedido.jsx`, `PedidoConfirmadoONoRealizado.jsx` | `pedidos`, `detalle_pedidos` |
+| `POST /api/v1/pedidos` | **Implementado (Funciona)** | `CLIENTE`, `OPERADORA`, `ADMIN` | `Checkout.jsx`, `NuevoPedido.jsx` | `pedidos`, `detalle_pedidos`, `productos` |
+| `PATCH /api/v1/pedidos/:id/asignar` | **Implementado (Funciona)** | Solo `OPERADORA`, `ADMIN` | `Operadora.jsx` (`ListaPedidosDelDia`) | `pedidos`, `repartidores` |
+| `PATCH /api/v1/pedidos/:id/estado` | **Implementado (Funciona)** | `OPERADORA`, `REPARTIDOR` (propio), `ADMIN` | `Operadora.jsx`, `Repartidor.jsx` (`ListaEntregas`) | `pedidos` |
+| `GET /api/v1/repartidores` | **Implementado (Funciona)** | `OPERADORA`, `REPARTIDOR`, `ADMIN` | `Operadora.jsx`, `Repartidor.jsx` | `repartidores` |
+| `GET /api/v1/usuarios` y `GET /api/v1/usuarios/:id` | **Implementado; pruebas pendientes** | Solo `ADMIN` para listado; `ADMIN` o titular para detalle | Gestión de cuentas | `usuarios`, `roles` |
+| `POST /api/v1/usuarios` y `PATCH /api/v1/usuarios/:id` | **Implementado; pruebas pendientes** | Solo `ADMIN` para crear; `ADMIN` o titular para actualizar datos permitidos | Gestión de cuentas | `usuarios`, `roles` |
+| `PATCH /api/v1/usuarios/:id/rol` y `DELETE /api/v1/usuarios/:id` | **Implementado; pruebas pendientes** | Solo `ADMIN`; DELETE desactiva la cuenta | Gestión de personal | `usuarios`, `roles` |
+| `GET/POST /api/v1/clientes`, `GET/PATCH/DELETE /api/v1/clientes/:id` | **Implementado; pruebas pendientes** | Listar/crear y DELETE: solo `ADMIN`; ver/editar: `ADMIN` o titular. DELETE elimina el perfil, no la cuenta | Gestión de clientes | `clientes`, `usuarios` |
+| `GET/PATCH /api/v1/clientes/me` | **Implementado; pruebas pendientes** | Cliente autenticado, solo perfil propio | Perfil del cliente | `clientes`, `usuarios` |
 
 > **Justificación de operaciones CRUD que NO corresponden al negocio:**
-> - **No se implementa `DELETE /api/pedidos/:id`:** En el negocio de distribución de gas, un pedido registrado que ya descontó inventario o fue despachado en camión no debe borrarse físicamente de la base de datos por motivos de auditoría, control de stock y cuadratura de caja diaria.
-> - **No se implementa `PUT /api/pedidos/:id` abierto al cliente:** Una vez confirmado el pedido, el cliente no puede modificar unilateralmente los precios, las cantidades ni el estado del pedido; las únicas mutaciones permitidas sobre un pedido son la asignación de repartidor (`PATCH /api/pedidos/:id/asignar`) y el avance de estado logístico (`PATCH /api/pedidos/:id/estado`) por personal autorizado.
+> - **No se implementa `DELETE /api/v1/pedidos/:id`:** En el negocio de distribución de gas, un pedido registrado que ya descontó inventario o fue despachado en camión no debe borrarse físicamente de la base de datos por motivos de auditoría, control de stock y cuadratura de caja diaria.
+> - **No se implementa `PUT /api/v1/pedidos/:id` abierto al cliente:** Una vez confirmado el pedido, el cliente no puede modificar unilateralmente los precios, las cantidades ni el estado del pedido; las únicas mutaciones permitidas sobre un pedido son la asignación de repartidor (`PATCH /api/v1/pedidos/:id/asignar`) y el avance de estado logístico (`PATCH /api/v1/pedidos/:id/estado`) por personal autorizado.
 
 ### 5.2. Documentación viva: cómo abrir y probar Swagger UI
 
@@ -312,14 +345,14 @@ La API incluye su especificación **OpenAPI 3.0.3** en [`src/config/swagger.js`]
 - **Especificación OpenAPI en formato JSON:** `http://localhost:3000/api-docs.json`
 
 **Cómo probar endpoints protegidos desde Swagger UI:**
-1. Ejecutar `POST /api/auth/login` con una de las cuentas de prueba (por ejemplo `maria.soto@correo.cl` / `Cliente2026!` o `admin@elvolcan.cl` / `AdminVolcan2026!`).
+1. En modo local (`DB_MODE=memory`), ejecutar `POST /api/v1/auth/login` con una cuenta de demostración (por ejemplo `maria.soto@correo.cl` / `Cliente2026!`). En PostgreSQL/RDS, iniciar sesión con el administrador aprovisionado mediante `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_PASSWORD`.
 2. Copiar el valor de `accessToken` de la respuesta `200 OK`.
 3. Presionar el botón **`Authorize`** arriba a la derecha en Swagger UI, pegar el token y confirmar.
-4. Ejecutar cualquier ruta protegida como `GET /api/auth/me` o `POST /api/pedidos`.
+4. Ejecutar cualquier ruta protegida como `GET /api/v1/auth/me` o `POST /api/v1/pedidos`.
 
 ### 5.3. Ejemplos de contratos JSON (Entrada vs. Respuesta del Servidor)
 
-#### A) `POST /api/auth/register` — Registro de cliente
+#### A) `POST /api/v1/auth/register` — Registro de cliente
 - **Cuerpo de entrada (enviado por el cliente):**
   ```json
   {
@@ -341,7 +374,7 @@ La API incluye su especificación **OpenAPI 3.0.3** en [`src/config/swagger.js`]
   ```
 - **Errores previstos:** `400 Bad Request` (correo mal formado o clave `< 6` caracteres), `409 Conflict` (`{ "error": "Ya existe una cuenta registrada con ese correo electrónico" }`).
 
-#### B) `POST /api/auth/login` — Inicio de sesión con JWT
+#### B) `POST /api/v1/auth/login` — Inicio de sesión con JWT
 - **Cuerpo de entrada (enviado por el cliente):**
   ```json
   {
@@ -367,7 +400,7 @@ La API incluye su especificación **OpenAPI 3.0.3** en [`src/config/swagger.js`]
   ```
 - **Errores previstos:** `400 Bad Request` (campos faltantes), `401 Unauthorized` (`{ "error": "Credenciales inválidas" }` sin revelar si el correo existe), `429 Too Many Requests` (más de 5 intentos fallidos en 15 minutos).
 
-#### C) `POST /api/pedidos` — Creación de pedido de gas (Flujo principal)
+#### C) `POST /api/v1/pedidos` — Creación de pedido de gas (Flujo principal)
 - **Encabezado requerido:** `Authorization: Bearer <accessToken>`
 - **Cuerpo de entrada (enviado por el cliente):**
   ```json
@@ -423,9 +456,9 @@ La API incluye su especificación **OpenAPI 3.0.3** en [`src/config/swagger.js`]
 
 | Operación | Decisión adoptada y documentada por el equipo |
 |---|---|
-| `POST /api/auth/register` | Valida nombre, formato de email y clave de al menos 6 caracteres. Normaliza el correo a minúsculas, comprueba unicidad (`409 Conflict`), aplica hash BCrypt (`cost = 10`) y **asigna de manera fija el rol `CLIENTE` en el servidor**. Las cuentas de `ADMIN`, `OPERADORA` y `REPARTIDOR` no pueden crearse desde el formulario público; son aprovisionadas por administración en la base de datos. |
-| `POST /api/auth/login` | Recibe `email` y `clave`, busca la cuenta activa y compara el hash con `bcrypt.compare()`. Si el correo no existe o la contraseña no coincide, responde `401 Unauthorized` con el mensaje genérico `"Credenciales inválidas"` para impedir la enumeración de cuentas. Si es correcto, devuelve `accessToken`, `tokenType: "Bearer"`, `expiresIn: 3600` y los datos públicos del usuario. |
-| `GET /api/auth/me` | Obtiene el perfil del usuario exclusivamente a partir del claim `sub` del token JWT ya verificado por el middleware `verificarToken`. Jamás recibe ni confía en un `id` enviado por query o body para evitar suplantación de identidad. |
+| `POST /api/v1/auth/register` | Valida nombre, formato de email y clave de al menos 6 caracteres. Normaliza el correo a minúsculas, comprueba unicidad (`409 Conflict`), aplica hash BCrypt (`cost = 10`) y **asigna de manera fija el rol `CLIENTE` en el servidor**. Las cuentas de `ADMIN`, `OPERADORA` y `REPARTIDOR` no pueden crearse desde el formulario público; son aprovisionadas por administración en la base de datos. |
+| `POST /api/v1/auth/login` | Recibe `email` y `clave`, busca la cuenta activa y compara el hash con `bcrypt.compare()`. Si el correo no existe o la contraseña no coincide, responde `401 Unauthorized` con el mensaje genérico `"Credenciales inválidas"` para impedir la enumeración de cuentas. Si es correcto, devuelve `accessToken`, `tokenType: "Bearer"`, `expiresIn: 3600` y los datos públicos del usuario. |
+| `GET /api/v1/auth/me` | Obtiene el perfil del usuario exclusivamente a partir del claim `sub` del token JWT ya verificado por el middleware `verificarToken`. Jamás recibe ni confía en un `id` enviado por query o body para evitar suplantación de identidad. |
 | **Cierre de sesión y renovación** | Para esta primera versión del proyecto se optó por un esquema **sin `refreshToken`**, con un `accessToken` de vigencia acotada (`3600` segundos = 1 hora). Al cerrar sesión en React se elimina el token de la memoria del cliente, y al expirar el token el usuario debe volver a autenticarse en `/login`. |
 
 ### 6.2. Diagrama de secuencia: Login, Solicitud Protegida y Casos de Rechazo
@@ -437,8 +470,8 @@ sequenceDiagram
     participant API as Backend Express (Seguridad / Servicios)
     participant DB as PostgreSQL (AWS RDS)
 
-    Note over React,DB: 1. Inicio de sesión (POST /api/auth/login)
-    React->>API: POST /api/auth/login (HTTPS: { email, clave })
+    Note over React,DB: 1. Inicio de sesión (POST /api/v1/auth/login)
+    React->>API: POST /api/v1/auth/login (HTTPS: { email, clave })
     API->>DB: SELECT usuario, password_hash, rol, activo WHERE email = $1
     DB-->>API: Registro de usuario (o vacío)
 
@@ -449,7 +482,7 @@ sequenceDiagram
         API-->>React: 200 OK { accessToken, tokenType: "Bearer", expiresIn: 3600, usuario }
     end
 
-    Note over React,DB: 2. Solicitud a endpoint protegido (GET /api/auth/me o POST /api/pedidos)
+    Note over React,DB: 2. Solicitud a endpoint protegido (GET /api/v1/auth/me o POST /api/v1/pedidos)
     React->>API: Solicitud HTTP + Header Authorization: Bearer <token>
     API->>API: Middleware verificarToken: comprobar firma HS256, exp, iss y aud
 
@@ -481,9 +514,9 @@ sequenceDiagram
   - `exp` (*Expiration Time*) e `iat` (*Issued At*): Tiempo de expiración y emisión en época UNIX.
   - **Datos adicionales justificados:** `rol` (`CLIENTE`, `OPERADORA`, `REPARTIDOR`, `ADMIN`), `email` y `repartidorCodigo` (`R1..R3` cuando aplica), incluidos para que el middleware de autorización y la interfaz adapten las vistas operativas sin exponer jamás contraseñas, hashes ni direcciones personales en el payload del token.
 - **Duración de acceso:** **1 hora (`3600` segundos)**. Se eligió este plazo porque cubre holgadamente el flujo de compra y seguimiento de un pedido doméstico o un bloque operativo en laboratorio, limitando la ventana de exposición en caso de robo del token dado que no se utiliza `refreshToken` en esta etapa.
-- **Manejo del token en el Frontend React:** El token de acceso se mantiene **en memoria dentro de un `AuthContext` de React** (y no reutilizando automáticamente el patrón de `localStorage` del carrito de la Unidad 2, ya que `localStorage` es accesible por cualquier script ante una vulnerabilidad XSS). Al recargar la pestaña se solicita iniciar sesión nuevamente.
+- **Manejo del token en el Frontend React:** La rúbrica requiere restaurar sesión tras recargar; la implementación queda pendiente en el repositorio frontend. El recordatorio recomienda `sessionStorage` como alternativa que persiste al recargar la pestaña y se elimina al cerrarla, considerando que sigue siendo accesible a JavaScript y requiere protección frente a XSS.
 - **Qué sucede al expirar, cerrar sesión o deshabilitar una cuenta:**
-  - Borrar el token de la memoria del navegador cierra la sesión en la interfaz, pero una copia del JWT emitida previamente sigue siendo criptográficamente válida hasta que se cumpla su tiempo `exp` (1 hora).
+  - Al cerrar sesión, el frontend debe borrar el token del almacenamiento elegido. Una copia del JWT emitida previamente sigue siendo criptográficamente válida hasta que se cumpla su tiempo `exp` (1 hora).
   - Para mitigar este riesgo cuando se **deshabilita una cuenta**, el middleware `verificarToken` consulta el estado `activo` del usuario en la base de datos a partir del claim `sub` en cada solicitud protegida: si `activo === false`, el backend rechaza inmediatamente el token con `401 Unauthorized` aunque aún no haya expirado.
 
 ### 6.4. Controles de seguridad previstos (OWASP REST Security)
@@ -501,16 +534,16 @@ Se utilizan los 4 roles definidos en el ERS de *Distribuidora de Gas El Volcán*
 
 | Operación / Endpoint | `CLIENTE` | `OPERADORA` | `REPARTIDOR` | `ADMIN` | Regla de propiedad sobre los registros |
 |---|---|---|---|---|---|
-| `GET /api/productos` y `GET /api/productos/:id` | Permitido | Permitido | Permitido | Permitido | Catálogo público de lectura. |
-| `POST`, `PUT`, `DELETE /api/productos/*` | Denegado (`403`) | Denegado (`403`) | Denegado (`403`) | **Permitido** | Solo `ADMIN` administra el catálogo y stock base. |
-| `POST /api/pedidos` | **Permitido** | **Permitido** | Denegado (`403`) | **Permitido** | El pedido queda vinculado a `usuarioId = req.usuario.id`. |
-| `GET /api/pedidos` | **Solo sus pedidos** | **Todos los pedidos** | **Solo sus entregas** | **Todos los pedidos** | El servicio filtra en servidor por `usuarioId` o `repartidorCodigo`. |
-| `GET /api/pedidos/:id` | **Solo si es dueño** | **Cualquier pedido** | **Solo si está asignado** | **Cualquier pedido** | **Regla Anti-IDOR:** devuelve `403` si el `CLIENTE` o `REPARTIDOR` cambia el `:id` en la URL para ver un pedido ajeno. |
-| `PATCH /api/pedidos/:id/asignar` | Denegado (`403`) | **Permitido** | Denegado (`403`) | **Permitido** | Asigna un repartidor activo (`R1..R3`) y pasa el pedido a `asignado`. |
-| `PATCH /api/pedidos/:id/estado` | Denegado (`403`) | **Permitido** | **Solo entregas asignadas a él** | **Permitido** | Un `REPARTIDOR` solo puede avanzar sus propios pedidos a `en_camino` o `entregado`. |
-| `GET /api/repartidores` | Denegado (`403`) | **Permitido** | **Permitido** | **Permitido** | Consulta de flota interna de reparto. |
+| `GET /api/v1/productos` y `GET /api/v1/productos/:id` | Permitido | Permitido | Permitido | Permitido | Catálogo público de lectura. |
+| `POST`, `PUT`, `DELETE /api/v1/productos/*` | Denegado (`403`) | Denegado (`403`) | Denegado (`403`) | **Permitido** | Solo `ADMIN` administra el catálogo y stock base. |
+| `POST /api/v1/pedidos` | **Permitido** | **Permitido** | Denegado (`403`) | **Permitido** | El pedido queda vinculado a `usuarioId = req.usuario.id`. |
+| `GET /api/v1/pedidos` | **Solo sus pedidos** | **Todos los pedidos** | **Solo sus entregas** | **Todos los pedidos** | El servicio filtra en servidor por `usuarioId` o `repartidorCodigo`. |
+| `GET /api/v1/pedidos/:id` | **Solo si es dueño** | **Cualquier pedido** | **Solo si está asignado** | **Cualquier pedido** | **Regla Anti-IDOR:** devuelve `403` si el `CLIENTE` o `REPARTIDOR` cambia el `:id` en la URL para ver un pedido ajeno. |
+| `PATCH /api/v1/pedidos/:id/asignar` | Denegado (`403`) | **Permitido** | Denegado (`403`) | **Permitido** | Asigna un repartidor activo (`R1..R3`) y pasa el pedido a `asignado`. |
+| `PATCH /api/v1/pedidos/:id/estado` | Denegado (`403`) | **Permitido** | **Solo entregas asignadas a él** | **Permitido** | Un `REPARTIDOR` solo puede avanzar sus propios pedidos a `en_camino` o `entregado`. |
+| `GET /api/v1/repartidores` | Denegado (`403`) | **Permitido** | **Permitido** | **Permitido** | Consulta de flota interna de reparto. |
 
-- **Asignación de roles:** El registro público (`POST /api/auth/register`) fuerza en el código del servidor `rol = 'CLIENTE'`. La creación o promoción de cuentas con rol `OPERADORA`, `REPARTIDOR` o `ADMIN` es atribución exclusiva del administrador del sistema en la base de datos (y del endpoint administrativo propuesto `PATCH /api/usuarios/:id/rol` protegido por `requerirRoles('ADMIN')`).
+- **Asignación de roles:** El registro público (`POST /api/v1/auth/register`) fuerza en el código del servidor `rol = 'CLIENTE'`. La creación o promoción de cuentas con rol `OPERADORA`, `REPARTIDOR` o `ADMIN` es atribución exclusiva del administrador del sistema en la base de datos (y del endpoint administrativo propuesto `PATCH /api/v1/usuarios/:id/rol` protegido por `requerirRoles('ADMIN')`).
 
 ---
 
@@ -527,16 +560,16 @@ Se utilizan los 4 roles definidos en el ERS de *Distribuidora de Gas El Volcán*
 
 ### 8.2. Matriz de casos comprobados (Esperado vs. Obtenido)
 
-Todos los casos fueron verificados mediante la suite automatizada [`tests/api.test.js`](file:///home/ubuntu/Distribuidora-gas-el-volcan-backend/tests/api.test.js) (`npm test`) y pruebas HTTP directas:
+Los casos 1–7 describen la verificación previa de la API existente. Los casos nuevos de usuarios/clientes (8–9) y la actualización de Swagger están pendientes de ejecución con `npm test` en un entorno con Node.js instalado.
 
 | Caso a considerar | Precondiciones y datos de prueba | Resultado esperado | Resultado realmente obtenido | Estado |
 |---|---|---|---|---|
 | **1. Login válido e inválido** | Cuenta semilla `maria.soto@correo.cl`. Se prueba con `Cliente2026!`, luego con clave errónea y con correo inexistente. | `200 OK` con `accessToken` Bearer (`expiresIn: 3600`) sin hash; `401` con mensaje genérico `"Credenciales inválidas"` en ambos fallos. | `200 OK` con token JWT válido y perfil limpio; `401` con `{ "error": "Credenciales inválidas" }` en ambos casos fallidos. | **Aprobado** |
-| **2. Ruta protegida sin token, alterado o vencido** | Solicitud a `GET /api/auth/me` sin header, con `Bearer token.falso.alterado` y con JWT firmado con `expiresIn: -10`. | Rechazo `401 Unauthorized` en los 3 escenarios sin exponer datos del perfil. | `401 Unauthorized` en los 3 casos (`"Sesión vencida: el token JWT ha expirado"` para el token vencido). | **Aprobado** |
-| **3. Rol insuficiente y acceso a registros ajenos (IDOR)** | `maria.soto@correo.cl` (`CLIENTE`) intenta `POST /api/productos`; luego otro cliente (`cliente2@correo.cl`) intenta `GET /api/pedidos/1`. | `403 Forbidden` al intentar crear un producto y `403 Forbidden` al intentar leer el pedido de María Soto. | `403 Forbidden` en ambos casos, impidiendo modificar el catálogo o leer pedidos de otro cliente. | **Aprobado** |
-| **4. Registro inválido, duplicado y escalamiento de rol** | `POST /api/auth/register` enviando `"rol": "ADMIN"`, luego repitiendo el correo en mayúsculas y luego con clave de 3 caracteres. | `201 Created` forzando `rol: "CLIENTE"`; `409 Conflict` ante correo duplicado; `400 Bad Request` ante datos mal formados. | `201` con `rol: "CLIENTE"`, `409` sin duplicar registro y `400` detallando errores por campo. | **Aprobado** |
-| **5. CRUD, cálculo en servidor y conflictos de negocio** | Cliente envía `POST /api/pedidos` por `2 × CL003` (`comercial`) mandando `total: 1`; luego pide `999 × AC003`; Admin intenta `DELETE /api/productos/CL003`. | Servidor ignora `total: 1`, calcula `2 × 14500 = 29000` y descuenta stock (`90 -> 88`); devuelve `409` por falta de stock en `AC003` y `409` al intentar borrar `CL003` con pedido asociado. | `201 Created` con `total: 29000` y `stock: 88`; `409 Conflict` en falta de stock y `409 Conflict` en borrado de producto con historial. | **Aprobado** |
-| **6. Flujo logístico Operadora -> Repartidor** | Operadora asigna `R1` en `PATCH /api/pedidos/1/asignar`; Repartidor `R1` ejecuta `PATCH /api/pedidos/1/estado` a `en_camino` y `entregado`. | El pedido pasa de `pendiente` -> `asignado` (`repartidorId: "R1"`) -> `en_camino` -> `entregado`. | Transiciones persistidas correctamente con respuestas `200 OK`. | **Aprobado** |
+| **2. Ruta protegida sin token, alterado o vencido** | Solicitud a `GET /api/v1/auth/me` sin header, con `Bearer token.falso.alterado` y con JWT firmado con `expiresIn: -10`. | Rechazo `401 Unauthorized` en los 3 escenarios sin exponer datos del perfil. | `401 Unauthorized` en los 3 casos (`"Sesión vencida: el token JWT ha expirado"` para el token vencido). | **Aprobado** |
+| **3. Rol insuficiente y acceso a registros ajenos (IDOR)** | `maria.soto@correo.cl` (`CLIENTE`) intenta `POST /api/v1/productos`; luego otro cliente (`cliente2@correo.cl`) intenta `GET /api/v1/pedidos/1`. | `403 Forbidden` al intentar crear un producto y `403 Forbidden` al intentar leer el pedido de María Soto. | `403 Forbidden` en ambos casos, impidiendo modificar el catálogo o leer pedidos de otro cliente. | **Aprobado** |
+| **4. Registro inválido, duplicado y escalamiento de rol** | `POST /api/v1/auth/register` enviando `"rol": "ADMIN"`, luego repitiendo el correo en mayúsculas y luego con clave de 3 caracteres. | `201 Created` forzando `rol: "CLIENTE"`; `409 Conflict` ante correo duplicado; `400 Bad Request` ante datos mal formados. | `201` con `rol: "CLIENTE"`, `409` sin duplicar registro y `400` detallando errores por campo. | **Aprobado** |
+| **5. CRUD, cálculo en servidor y conflictos de negocio** | Cliente envía `POST /api/v1/pedidos` por `2 × CL003` (`comercial`) mandando `total: 1`; luego pide `999 × AC003`; Admin intenta `DELETE /api/v1/productos/CL003`. | Servidor ignora `total: 1`, calcula `2 × 14500 = 29000` y descuenta stock (`90 -> 88`); devuelve `409` por falta de stock en `AC003` y `409` al intentar borrar `CL003` con pedido asociado. | `201 Created` con `total: 29000` y `stock: 88`; `409 Conflict` en falta de stock y `409 Conflict` en borrado de producto con historial. | **Aprobado** |
+| **6. Flujo logístico Operadora -> Repartidor** | Operadora asigna `R1` en `PATCH /api/v1/pedidos/1/asignar`; Repartidor `R1` ejecuta `PATCH /api/v1/pedidos/1/estado` a `en_camino` y `entregado`. | El pedido pasa de `pendiente` -> `asignado` (`repartidorId: "R1"`) -> `en_camino` -> `entregado`. | Transiciones persistidas correctamente con respuestas `200 OK`. | **Aprobado** |
 | **7. Integración en navegador con React** | Conectar `src/services/*.js` del repositorio frontend a `http://<IP_EC2>:3000/api` y adaptar mocks de Vitest. | Carga de catálogo real, login con JWT en memoria y creación de pedidos desde la UI de React. | Contratos JSON verificados y compatibles; pendiente actualizar `fetch` en el repositorio separado del frontend. | **Pendiente (Repo Frontend)** |
 
 ---
@@ -595,7 +628,8 @@ npm install
 
 # 2. (Opcional) Configurar variables de entorno para Amazon RDS PostgreSQL
 cp .env.example .env
-# Editar .env con DB_HOST, DB_USER, DB_PASSWORD y JWT_SECRET
+# Configurar DB_HOST, DB_USER, DB_PASSWORD y un JWT_SECRET aleatorio de al menos 32 caracteres.
+# Para PostgreSQL, también definir DB_MODE=postgres y las variables BOOTSTRAP_ADMIN_* del primer administrador.
 
 # 3. Ejecutar la suite completa de pruebas automatizadas
 npm test
@@ -608,13 +642,13 @@ npm start
 
 ```bash
 # Verificar estado del servidor y saludo (Guía 18)
-curl -i "http://localhost:3000/api/saludo?nombre=Duoc"
+curl -i "http://localhost:3000/api/v1/saludo?nombre=Duoc"
 
 # Consultar catálogo de productos
-curl -i "http://localhost:3000/api/productos"
+curl -i "http://localhost:3000/api/v1/productos"
 
 # Iniciar sesión y obtener token JWT
-curl -i -X POST "http://localhost:3000/api/auth/login" \
+curl -i -X POST "http://localhost:3000/api/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"email":"maria.soto@correo.cl","clave":"Cliente2026!"}'
 ```

@@ -22,7 +22,7 @@ async function registrar(body) {
     throw crearError(400, 'Datos de registro inválidos', validacion.errores);
   }
 
-  const { nombre, email, clave } = validacion.datos;
+  const { nombre, email, clave, telefono, direccion, tipoCliente } = validacion.datos;
   const existente = await usuarioRepository.buscarPorEmail(email);
   if (existente) {
     throw crearError(409, 'Ya existe una cuenta registrada con ese correo electrónico');
@@ -37,7 +37,8 @@ async function registrar(body) {
     email,
     passwordHash,
     rol: 'CLIENTE',
-    repartidorCodigo: null
+    repartidorCodigo: null,
+    cliente: { telefono, direccion, tipoCliente }
   });
 
   return sanitizarUsuarioSalida(creado);

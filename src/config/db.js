@@ -1,10 +1,12 @@
 const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const {
   PRODUCTOS_INICIALES,
   REPARTIDORES_INICIALES,
-  crearUsuariosIniciales
+  crearUsuariosIniciales,
+  SALT_ROUNDS
 } = require('./seedData');
 
 let pool = null;
@@ -13,6 +15,8 @@ let usarPostgres = false;
 // Estado en memoria para entorno de desarrollo/pruebas locales cuando RDS no está definido en .env
 const memoryStore = {
   usuarios: [],
+  roles: ['ADMIN', 'CLIENTE', 'OPERADORA', 'REPARTIDOR'],
+  clientes: [],
   productos: [],
   repartidores: [],
   pedidos: []
@@ -20,6 +24,18 @@ const memoryStore = {
 
 function reiniciarMemoryStore() {
   memoryStore.usuarios = crearUsuariosIniciales();
+  memoryStore.clientes = memoryStore.usuarios
+    .filter((usuario) => usuario.rol === 'CLIENTE')
+    .map((usuario, index) => ({
+      id: index + 1,
+      usuarioId: usuario.id,
+      nombre: usuario.nombre,
+      telefono: null,
+      direccion: null,
+      tipoCliente: 'residencial',
+      activo: true,
+      creadoEn: new Date().toISOString()
+    }));
   memoryStore.productos = PRODUCTOS_INICIALES.map((p) => ({ ...p }));
   memoryStore.repartidores = REPARTIDORES_INICIALES.map((r) => ({ ...r }));
   memoryStore.pedidos = [];
@@ -66,16 +82,45 @@ async function inicializarBaseDeDatos() {
     const sql = fs.readFileSync(schemaPath, 'utf8');
     await pool.query(sql);
 
-    // Asegurar que existan las cuentas iniciales por rol con hash BCrypt
-    const usuariosSemilla = crearUsuariosIniciales();
-    for (const u of usuariosSemilla) {
-      await pool.query(
-        `INSERT INTO usuarios (nombre, email, password_hash, rol, repartidor_codigo, activo)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (email) DO NOTHING`,
-        [u.nombre, u.email, u.passwordHash, u.rol, u.repartidorCodigo, u.activo]
+    const emailAdministrador = String(process.env.BOOTSTRAP_ADMIN_EMAIL || '').trim().toLowerCase();
+    const claveAdministrador = process.env.BOOTSTRAP_ADMIN_PASSWORD || '';
+
+    if (emailAdministrador || claveAdministrador) {
+      if (!emailAdministrador ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAdministrador) ||
+          !claveAdministrador ||
+          claveAdministrador.length < 12) {
+        throw new Error(
+          'Configura BOOTSTRAP_ADMIN_EMAIL y BOOTSTRAP_ADMIN_PASSWORD (mínimo 12 caracteres) para crear el administrador inicial.'
+        );
+      }
+
+      const passwordHash = await bcrypt.hash(claveAdministrador, SALT_ROUNDS);
+      const resultado = await pool.query(
+        `INSERT INTO usuarios (nombre, email, password_hash, rol, activo)
+         VALUES ('Administrador inicial', $1, $2, 'ADMIN', TRUE)
+         ON CONFLICT (email) DO NOTHING
+         RETURNING id`,
+        [emailAdministrador, passwordHash]
       );
+
+      if (resultado.rowCount === 0) {
+        const existente = await pool.query(
+          'SELECT rol FROM usuarios WHERE LOWER(email) = $1 LIMIT 1',
+          [emailAdministrador]
+        );
+        if (existente.rows[0]?.rol !== 'ADMIN') {
+          throw new Error('BOOTSTRAP_ADMIN_EMAIL ya está asociado a una cuenta que no es ADMIN.');
+        }
+      }
     }
+
+    await pool.query(
+      `INSERT INTO clientes (usuario_id, nombre)
+       SELECT id, nombre FROM usuarios
+       WHERE rol = 'CLIENTE'
+       ON CONFLICT (usuario_id) DO NOTHING`
+    );
 
     return {
       modo: 'postgres',

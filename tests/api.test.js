@@ -4,6 +4,7 @@ const request = require('supertest');
 const jwt = require('jsonwebtoken');
 
 process.env.DB_MODE = 'memory';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-only-jwt-secret-change-before-deploy-2026';
 
 const app = require('../src/app');
 const { reiniciarMemoryStore } = require('../src/config/db');
@@ -25,6 +26,9 @@ describe('API Backend · Distribuidora de Gas El Volcán (Guías 18 y 19)', () =
   });
 
   it('1. Guía 18: responde en GET /api/saludo y devuelve 404 en rutas inexistentes', async () => {
+    const saludoVersionado = await request(app).get('/api/v1/saludo?nombre=Duoc');
+    assert.equal(saludoVersionado.status, 200);
+
     const saludo = await request(app).get('/api/saludo?nombre=Duoc');
     assert.equal(saludo.status, 200);
     assert.equal(saludo.body.mensaje, 'Hola, Duoc');
@@ -39,8 +43,10 @@ describe('API Backend · Distribuidora de Gas El Volcán (Guías 18 y 19)', () =
     const res = await request(app).get('/api-docs.json');
     assert.equal(res.status, 200);
     assert.equal(res.body.openapi, '3.0.3');
-    assert.ok(res.body.paths['/api/auth/login']);
-    assert.ok(res.body.paths['/api/pedidos']);
+    assert.ok(res.body.paths['/api/v1/auth/login']);
+    assert.ok(res.body.paths['/api/v1/pedidos']);
+    assert.ok(res.body.paths['/api/v1/usuarios']);
+    assert.ok(res.body.paths['/api/v1/clientes']);
   });
 
   it('3. Login válido e inválido: emite JWT con vigencia y rechaza credenciales erróneas con mensaje genérico', async () => {
@@ -120,6 +126,13 @@ describe('API Backend · Distribuidora de Gas El Volcán (Guías 18 y 19)', () =
     assert.equal(reg.body.email, 'joel.nuevo@correo.cl');
     assert.equal(reg.body.rol, 'CLIENTE');
     assert.equal(reg.body.passwordHash, undefined);
+
+    const tokenNuevo = await obtenerToken('joel.nuevo@correo.cl', 'MiClaveSegura123');
+    const perfilCliente = await request(app)
+      .get('/api/v1/clientes/me')
+      .set('Authorization', `Bearer ${tokenNuevo}`);
+    assert.equal(perfilCliente.status, 200);
+    assert.equal(perfilCliente.body.nombre, 'Joel Espinoza');
 
     const duplicado = await request(app)
       .post('/api/auth/register')
@@ -252,5 +265,106 @@ describe('API Backend · Distribuidora de Gas El Volcán (Guías 18 y 19)', () =
       .send({ estado: 'entregado' });
     assert.equal(entregado.status, 200);
     assert.equal(entregado.body.estado, 'entregado');
+  });
+
+  it('8. Guía 19: CRUD de usuarios versionado, roles persistidos y desactivación segura', async () => {
+    const tokenAdmin = await obtenerToken('admin@elvolcan.cl', 'AdminVolcan2026!');
+    const tokenCliente = await obtenerToken('maria.soto@correo.cl', 'Cliente2026!');
+
+    const lista = await request(app)
+      .get('/api/v1/usuarios')
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    assert.equal(lista.status, 200);
+    assert.equal(lista.body[0].passwordHash, undefined);
+
+    const roles = await request(app)
+      .get('/api/v1/usuarios/roles')
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    assert.deepEqual(roles.body, ['ADMIN', 'CLIENTE', 'OPERADORA', 'REPARTIDOR']);
+
+    const prohibido = await request(app)
+      .get('/api/v1/usuarios')
+      .set('Authorization', `Bearer ${tokenCliente}`);
+    assert.equal(prohibido.status, 403);
+
+    const accesoOtraCuenta = await request(app)
+      .get('/api/v1/usuarios/1')
+      .set('Authorization', `Bearer ${tokenCliente}`);
+    assert.equal(accesoOtraCuenta.status, 403);
+
+    const creado = await request(app)
+      .post('/api/v1/usuarios')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({
+        nombre: 'Cuenta de prueba',
+        email: 'cuenta.prueba@correo.cl',
+        clave: 'ClaveSegura123',
+        rol: 'CLIENTE'
+      });
+    assert.equal(creado.status, 201);
+    assert.equal(creado.body.rol, 'CLIENTE');
+
+    const actualizado = await request(app)
+      .patch(`/api/v1/usuarios/${creado.body.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ nombre: 'Cuenta actualizada' });
+    assert.equal(actualizado.status, 200);
+    assert.equal(actualizado.body.nombre, 'Cuenta actualizada');
+
+    const cambioRol = await request(app)
+      .patch(`/api/v1/usuarios/${creado.body.id}/rol`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ rol: 'OPERADORA' });
+    assert.equal(cambioRol.status, 200);
+    assert.equal(cambioRol.body.rol, 'OPERADORA');
+
+    const desactivado = await request(app)
+      .delete(`/api/v1/usuarios/${creado.body.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    assert.equal(desactivado.status, 204);
+
+    const loginDesactivado = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'cuenta.prueba@correo.cl', clave: 'ClaveSegura123' });
+    assert.equal(loginDesactivado.status, 401);
+  });
+
+  it('9. CRUD de clientes versionado y protección de perfiles ajenos', async () => {
+    const tokenAdmin = await obtenerToken('admin@elvolcan.cl', 'AdminVolcan2026!');
+    const tokenCliente = await obtenerToken('maria.soto@correo.cl', 'Cliente2026!');
+
+    const miPerfil = await request(app)
+      .get('/api/v1/clientes/me')
+      .set('Authorization', `Bearer ${tokenCliente}`);
+    assert.equal(miPerfil.status, 200);
+    assert.equal(miPerfil.body.usuarioId, 4);
+
+    const actualizacionPropia = await request(app)
+      .patch('/api/v1/clientes/me')
+      .set('Authorization', `Bearer ${tokenCliente}`)
+      .send({ telefono: '+56 9 9123 4567' });
+    assert.equal(actualizacionPropia.status, 200);
+    assert.equal(actualizacionPropia.body.telefono, '+56 9 9123 4567');
+
+    const creado = await request(app)
+      .post('/api/v1/clientes')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ nombre: 'Cliente independiente', direccion: 'Chillán' });
+    assert.equal(creado.status, 201);
+
+    const accesoAjeno = await request(app)
+      .get(`/api/v1/clientes/${creado.body.id}`)
+      .set('Authorization', `Bearer ${tokenCliente}`);
+    assert.equal(accesoAjeno.status, 403);
+
+    const eliminacionProhibida = await request(app)
+      .delete(`/api/v1/clientes/${miPerfil.body.id}`)
+      .set('Authorization', `Bearer ${tokenCliente}`);
+    assert.equal(eliminacionProhibida.status, 403);
+
+    const eliminado = await request(app)
+      .delete(`/api/v1/clientes/${creado.body.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`);
+    assert.equal(eliminado.status, 204);
   });
 });

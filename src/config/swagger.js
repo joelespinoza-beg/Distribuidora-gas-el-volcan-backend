@@ -17,6 +17,8 @@ const swaggerSpec = {
   ],
   tags: [
     { name: 'Autenticación', description: 'Registro, inicio de sesión con JWT y perfil autenticado' },
+    { name: 'Usuarios', description: 'Administración de cuentas y roles' },
+    { name: 'Clientes', description: 'Perfiles de clientes y control de acceso por propietario' },
     { name: 'Productos', description: 'Catálogo público de cilindros/accesorios y CRUD administrativo' },
     { name: 'Pedidos', description: 'Solicitud principal de gas, asignación de repartidor y seguimiento de entregas' },
     { name: 'Repartidores', description: 'Consulta de repartidores activos para despacho' },
@@ -28,7 +30,7 @@ const swaggerSpec = {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
-        description: 'Ingresa el token JWT obtenido en POST /api/auth/login (formato: Bearer <token>)'
+        description: 'Ingresa el token JWT obtenido en POST /api/v1/auth/login (formato: Bearer <token>)'
       }
     },
     schemas: {
@@ -82,6 +84,69 @@ const swaggerSpec = {
           tokenType: { type: 'string', example: 'Bearer' },
           expiresIn: { type: 'integer', example: 3600 },
           usuario: { $ref: '#/components/schemas/UsuarioPublico' }
+        }
+      },
+      UsuarioAdminEntrada: {
+        type: 'object',
+        required: ['nombre', 'email', 'clave', 'rol'],
+        properties: {
+          nombre: { type: 'string', minLength: 1, maxLength: 120 },
+          email: { type: 'string', format: 'email' },
+          clave: { type: 'string', minLength: 6 },
+          rol: { type: 'string', enum: ['ADMIN', 'OPERADORA', 'REPARTIDOR', 'CLIENTE'] },
+          repartidorCodigo: { type: 'string', example: 'R1' },
+          telefono: { type: 'string' },
+          direccion: { type: 'string' }
+        }
+      },
+      UsuarioActualizacion: {
+        type: 'object',
+        minProperties: 1,
+        properties: {
+          nombre: { type: 'string', maxLength: 120 },
+          email: { type: 'string', format: 'email' },
+          clave: { type: 'string', minLength: 6 }
+        }
+      },
+      CambioRol: {
+        type: 'object',
+        required: ['rol'],
+        properties: {
+          rol: { type: 'string', enum: ['ADMIN', 'OPERADORA', 'REPARTIDOR', 'CLIENTE'] },
+          repartidorCodigo: { type: 'string', example: 'R1' }
+        }
+      },
+      ClienteEntrada: {
+        type: 'object',
+        required: ['nombre'],
+        properties: {
+          nombre: { type: 'string', maxLength: 120 },
+          telefono: { type: 'string', example: '+56 9 1234 5678' },
+          direccion: { type: 'string', maxLength: 250 },
+          tipoCliente: { type: 'string', enum: ['residencial', 'comercial'] },
+          usuarioId: { type: 'integer', nullable: true }
+        }
+      },
+      ClienteActualizacion: {
+        type: 'object',
+        minProperties: 1,
+        properties: {
+          nombre: { type: 'string', maxLength: 120 },
+          telefono: { type: 'string', nullable: true },
+          direccion: { type: 'string', maxLength: 250, nullable: true },
+          tipoCliente: { type: 'string', enum: ['residencial', 'comercial'] }
+        }
+      },
+      Cliente: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer', readOnly: true },
+          usuarioId: { type: 'integer', nullable: true },
+          nombre: { type: 'string' },
+          telefono: { type: 'string', nullable: true },
+          direccion: { type: 'string', nullable: true },
+          tipoCliente: { type: 'string', enum: ['residencial', 'comercial'] },
+          activo: { type: 'boolean' }
         }
       },
       Producto: {
@@ -157,7 +222,7 @@ const swaggerSpec = {
     }
   },
   paths: {
-    '/api/saludo': {
+    '/api/v1/saludo': {
       get: {
         tags: ['Diagnóstico'],
         summary: 'Saludo de verificación del servidor (Guía 18)',
@@ -185,7 +250,7 @@ const swaggerSpec = {
         }
       }
     },
-    '/api/auth/register': {
+    '/api/v1/auth/register': {
       post: {
         tags: ['Autenticación'],
         summary: 'Registrar nueva cuenta de cliente',
@@ -218,7 +283,7 @@ const swaggerSpec = {
         }
       }
     },
-    '/api/auth/login': {
+    '/api/v1/auth/login': {
       post: {
         tags: ['Autenticación'],
         summary: 'Iniciar sesión y obtener JWT firmado (HS256)',
@@ -258,7 +323,7 @@ const swaggerSpec = {
         }
       }
     },
-    '/api/auth/me': {
+    '/api/v1/auth/me': {
       get: {
         tags: ['Autenticación'],
         summary: 'Obtener perfil del usuario autenticado',
@@ -279,7 +344,7 @@ const swaggerSpec = {
         }
       }
     },
-    '/api/productos': {
+    '/api/v1/productos': {
       get: {
         tags: ['Productos'],
         summary: 'Listar catálogo de cilindros y accesorios',
@@ -329,7 +394,7 @@ const swaggerSpec = {
         }
       }
     },
-    '/api/productos/{id}': {
+    '/api/v1/productos/{id}': {
       get: {
         tags: ['Productos'],
         summary: 'Obtener detalle de un producto por su código',
@@ -384,7 +449,7 @@ const swaggerSpec = {
         }
       }
     },
-    '/api/pedidos': {
+    '/api/v1/pedidos': {
       get: {
         tags: ['Pedidos'],
         summary: 'Listar pedidos según el rol del usuario autenticado',
@@ -433,7 +498,7 @@ const swaggerSpec = {
         }
       }
     },
-    '/api/pedidos/{id}': {
+    '/api/v1/pedidos/{id}': {
       get: {
         tags: ['Pedidos'],
         summary: 'Consultar detalle y seguimiento de un pedido por ID (con protección anti-IDOR)',
@@ -452,7 +517,7 @@ const swaggerSpec = {
         }
       }
     },
-    '/api/pedidos/{id}/asignar': {
+    '/api/v1/pedidos/{id}/asignar': {
       patch: {
         tags: ['Pedidos'],
         summary: 'Asignar repartidor a un pedido (Solo OPERADORA o ADMIN)',
@@ -484,7 +549,7 @@ const swaggerSpec = {
         }
       }
     },
-    '/api/pedidos/{id}/estado': {
+    '/api/v1/pedidos/{id}/estado': {
       patch: {
         tags: ['Pedidos'],
         summary: 'Actualizar estado de entrega del pedido (OPERADORA, REPARTIDOR asignado o ADMIN)',
@@ -519,7 +584,7 @@ const swaggerSpec = {
         }
       }
     },
-    '/api/repartidores': {
+    '/api/v1/repartidores': {
       get: {
         tags: ['Repartidores'],
         summary: 'Listar repartidores activos (OPERADORA, REPARTIDOR o ADMIN)',
@@ -539,6 +604,259 @@ const swaggerSpec = {
           },
           401: { description: 'No autenticado' },
           403: { description: 'Sin permiso' }
+        }
+      }
+    },
+    '/api/v1/usuarios': {
+      get: {
+        tags: ['Usuarios'],
+        summary: 'Listar usuarios (solo ADMIN)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: 'Lista de cuentas sin contraseñas ni hashes' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Solo ADMIN puede listar todas las cuentas' }
+        }
+      },
+      post: {
+        tags: ['Usuarios'],
+        summary: 'Crear usuario con rol asignado por ADMIN',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UsuarioAdminEntrada' }
+            }
+          }
+        },
+        responses: {
+          201: { description: 'Usuario creado' },
+          400: { description: 'Datos o rol inválidos' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Solo ADMIN puede crear usuarios' },
+          409: { description: 'El correo ya está registrado' }
+        }
+      }
+    },
+    '/api/v1/usuarios/roles': {
+      get: {
+        tags: ['Usuarios'],
+        summary: 'Listar roles persistidos (solo ADMIN)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Roles disponibles',
+            content: {
+              'application/json': {
+                example: ['ADMIN', 'CLIENTE', 'OPERADORA', 'REPARTIDOR']
+              }
+            }
+          },
+          401: { description: 'No autenticado' },
+          403: { description: 'Solo ADMIN puede consultar roles' }
+        }
+      }
+    },
+    '/api/v1/usuarios/{id}': {
+      parameters: [{
+        name: 'id',
+        in: 'path',
+        required: true,
+        schema: { type: 'integer', minimum: 1 }
+      }],
+      get: {
+        tags: ['Usuarios'],
+        summary: 'Consultar una cuenta (ADMIN o titular)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: 'Cuenta encontrada' },
+          401: { description: 'No autenticado' },
+          403: { description: 'No se permite consultar otra cuenta' },
+          404: { description: 'Usuario no encontrado' }
+        }
+      },
+      patch: {
+        tags: ['Usuarios'],
+        summary: 'Modificar datos de cuenta (ADMIN o titular; no modifica rol)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UsuarioActualizacion' }
+            }
+          }
+        },
+        responses: {
+          200: { description: 'Cuenta actualizada' },
+          400: { description: 'Datos inválidos' },
+          401: { description: 'No autenticado' },
+          403: { description: 'No se permite modificar otra cuenta' },
+          409: { description: 'El correo ya está registrado' }
+        }
+      },
+      delete: {
+        tags: ['Usuarios'],
+        summary: 'Desactivar una cuenta sin borrar sus pedidos (solo ADMIN)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          204: { description: 'Cuenta desactivada' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Solo ADMIN puede desactivar cuentas' },
+          404: { description: 'Usuario no encontrado' },
+          409: { description: 'No puede desactivarse el último administrador activo' }
+        }
+      }
+    },
+    '/api/v1/usuarios/{id}/rol': {
+      parameters: [{
+        name: 'id',
+        in: 'path',
+        required: true,
+        schema: { type: 'integer', minimum: 1 }
+      }],
+      patch: {
+        tags: ['Usuarios'],
+        summary: 'Cambiar rol (solo ADMIN)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CambioRol' }
+            }
+          }
+        },
+        responses: {
+          200: { description: 'Rol actualizado' },
+          400: { description: 'Rol o código de repartidor inválido' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Solo ADMIN puede cambiar roles' },
+          404: { description: 'Usuario no encontrado' },
+          409: { description: 'No puede quitarse el rol del último administrador activo' }
+        }
+      }
+    },
+    '/api/v1/clientes': {
+      get: {
+        tags: ['Clientes'],
+        summary: 'Listar clientes (solo ADMIN)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: 'Lista de perfiles de cliente' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Solo ADMIN puede listar clientes' }
+        }
+      },
+      post: {
+        tags: ['Clientes'],
+        summary: 'Crear un perfil de cliente (solo ADMIN)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ClienteEntrada' }
+            }
+          }
+        },
+        responses: {
+          201: { description: 'Perfil creado' },
+          400: { description: 'Datos o usuario asociado inválidos' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Solo ADMIN puede crear clientes' },
+          409: { description: 'El usuario ya tiene perfil de cliente' }
+        }
+      }
+    },
+    '/api/v1/clientes/me': {
+      get: {
+        tags: ['Clientes'],
+        summary: 'Consultar perfil propio (solo CLIENTE)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: 'Perfil del cliente autenticado' },
+          401: { description: 'No autenticado' },
+          403: { description: 'El rol no es CLIENTE' },
+          404: { description: 'La cuenta no tiene perfil de cliente' }
+        }
+      },
+      patch: {
+        tags: ['Clientes'],
+        summary: 'Actualizar perfil propio (solo CLIENTE)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ClienteActualizacion' }
+            }
+          }
+        },
+        responses: {
+          200: { description: 'Perfil actualizado' },
+          400: { description: 'Datos inválidos' },
+          401: { description: 'No autenticado' },
+          403: { description: 'El rol no es CLIENTE' },
+          404: { description: 'La cuenta no tiene perfil de cliente' }
+        }
+      }
+    },
+    '/api/v1/clientes/{id}': {
+      parameters: [{
+        name: 'id',
+        in: 'path',
+        required: true,
+        schema: { type: 'integer', minimum: 1 }
+      }],
+      get: {
+        tags: ['Clientes'],
+        summary: 'Consultar cliente (ADMIN o titular)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Perfil de cliente',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Cliente' }
+              }
+            }
+          },
+          401: { description: 'No autenticado' },
+          403: { description: 'No se permite consultar otro cliente' },
+          404: { description: 'Cliente no encontrado' }
+        }
+      },
+      patch: {
+        tags: ['Clientes'],
+        summary: 'Actualizar cliente (ADMIN o titular)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ClienteActualizacion' }
+            }
+          }
+        },
+        responses: {
+          200: { description: 'Perfil actualizado' },
+          400: { description: 'Datos inválidos' },
+          401: { description: 'No autenticado' },
+          403: { description: 'No se permite modificar otro cliente' },
+          404: { description: 'Cliente no encontrado' }
+        }
+      },
+      delete: {
+        tags: ['Clientes'],
+        summary: 'Eliminar perfil de cliente (solo ADMIN)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          204: { description: 'Perfil eliminado; la cuenta y los pedidos se conservan' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Solo ADMIN puede eliminar clientes' },
+          404: { description: 'Cliente no encontrado' }
         }
       }
     }

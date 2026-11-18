@@ -60,25 +60,40 @@ function sanitizarUsuarioSalida(usuario) {
 }
 
 function validarEntradaRegistro(body = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) body = {};
   const errores = {};
   const nombre = String(body.nombre ?? '').trim();
   const email = String(body.email ?? '').trim().toLowerCase();
   const clave = String(body.clave ?? body.password ?? '');
+  const telefono = body.telefono === undefined ? undefined : String(body.telefono).trim();
+  const direccion = body.direccion === undefined ? undefined : String(body.direccion).trim();
+  const tipoCliente = String(body.tipoCliente ?? 'residencial').trim().toLowerCase();
 
   if (!nombre) errores.nombre = 'Ingresa tu nombre';
   const errEmail = validarEmail(email);
   if (errEmail) errores.email = errEmail;
   const errClave = validarClave(clave);
   if (errClave) errores.clave = errClave;
+  if (telefono) {
+    const errTelefono = validarTelefono(telefono);
+    if (errTelefono) errores.telefono = errTelefono;
+  }
+  if (direccion && direccion.length > 250) {
+    errores.direccion = 'La dirección no puede superar 250 caracteres';
+  }
+  if (!TIPOS_CLIENTE.includes(tipoCliente)) {
+    errores.tipoCliente = 'El tipo de cliente debe ser residencial o comercial';
+  }
 
   return {
     esValido: Object.keys(errores).length === 0,
     errores,
-    datos: { nombre, email, clave }
+    datos: { nombre, email, clave, telefono: telefono || null, direccion: direccion || null, tipoCliente }
   };
 }
 
 function validarEntradaLogin(body = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) body = {};
   const errores = {};
   const email = String(body.email ?? '').trim().toLowerCase();
   const clave = String(body.clave ?? body.password ?? '');
@@ -92,6 +107,175 @@ function validarEntradaLogin(body = {}) {
     errores,
     datos: { email, clave }
   };
+}
+
+function validarEntradaUsuario(body = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) body = {};
+  const errores = {};
+  const nombre = String(body.nombre ?? '').trim();
+  const email = String(body.email ?? '').trim().toLowerCase();
+  const clave = String(body.clave ?? body.password ?? '');
+  const rol = String(body.rol ?? '').trim().toUpperCase();
+  const repartidorCodigo = body.repartidorCodigo
+    ? String(body.repartidorCodigo).trim().toUpperCase()
+    : null;
+  const telefono = body.telefono === undefined ? undefined : String(body.telefono).trim();
+  const direccion = body.direccion === undefined ? undefined : String(body.direccion).trim();
+  const tipoCliente = String(body.tipoCliente ?? 'residencial').trim().toLowerCase();
+
+  if (!nombre) errores.nombre = 'Ingresa el nombre';
+  const errEmail = validarEmail(email);
+  if (errEmail) errores.email = errEmail;
+  const errClave = validarClave(clave);
+  if (errClave) errores.clave = errClave;
+  if (!ROLES_VALIDOS.includes(rol)) {
+    errores.rol = `El rol debe ser uno de: ${ROLES_VALIDOS.join(', ')}`;
+  }
+  if (rol === 'REPARTIDOR' && !repartidorCodigo) {
+    errores.repartidorCodigo = 'Asigna el código del repartidor';
+  }
+  if (repartidorCodigo && !/^R[A-Z0-9]{1,9}$/.test(repartidorCodigo)) {
+    errores.repartidorCodigo = 'El código de repartidor no tiene un formato válido';
+  }
+  if (telefono) {
+    const errTelefono = validarTelefono(telefono);
+    if (errTelefono) errores.telefono = errTelefono;
+  }
+  if (direccion && direccion.length > 250) {
+    errores.direccion = 'La dirección no puede superar 250 caracteres';
+  }
+  if (rol === 'CLIENTE' && !TIPOS_CLIENTE.includes(tipoCliente)) {
+    errores.tipoCliente = 'El tipo de cliente debe ser residencial o comercial';
+  }
+
+  return {
+    esValido: Object.keys(errores).length === 0,
+    errores,
+    datos: {
+      nombre,
+      email,
+      clave,
+      rol,
+      repartidorCodigo,
+      cliente: {
+        telefono: telefono || null,
+        direccion: direccion || null,
+        tipoCliente: TIPOS_CLIENTE.includes(tipoCliente) ? tipoCliente : 'residencial'
+      }
+    }
+  };
+}
+
+function validarActualizacionUsuario(body = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) body = {};
+  const errores = {};
+  const datos = {};
+
+  if (Object.hasOwn(body, 'rol') || Object.hasOwn(body, 'activo') ||
+      Object.hasOwn(body, 'repartidorCodigo') || Object.hasOwn(body, 'passwordHash')) {
+    errores.permisos = 'El rol y el estado de la cuenta solo se modifican mediante acciones administrativas.';
+  }
+  if (body.nombre !== undefined) {
+    const nombre = String(body.nombre).trim();
+    if (!nombre) errores.nombre = 'El nombre no puede estar vacío';
+    else datos.nombre = nombre;
+  }
+  if (body.email !== undefined) {
+    const email = String(body.email).trim().toLowerCase();
+    const errEmail = validarEmail(email);
+    if (errEmail) errores.email = errEmail;
+    else datos.email = email;
+  }
+  if (body.clave !== undefined || body.password !== undefined) {
+    const clave = String(body.clave ?? body.password);
+    const errClave = validarClave(clave);
+    if (errClave) errores.clave = errClave;
+    else datos.clave = clave;
+  }
+  if (Object.keys(datos).length === 0 && Object.keys(errores).length === 0) {
+    errores.solicitud = 'Debes enviar al menos nombre, email o clave';
+  }
+
+  return { esValido: Object.keys(errores).length === 0, errores, datos };
+}
+
+function validarCambioRol(body = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) body = {};
+  const errores = {};
+  const rol = String(body.rol ?? '').trim().toUpperCase();
+  const repartidorCodigo = body.repartidorCodigo
+    ? String(body.repartidorCodigo).trim().toUpperCase()
+    : null;
+
+  if (!ROLES_VALIDOS.includes(rol)) {
+    errores.rol = `El rol debe ser uno de: ${ROLES_VALIDOS.join(', ')}`;
+  }
+  if (rol === 'REPARTIDOR' && !repartidorCodigo) {
+    errores.repartidorCodigo = 'Asigna el código del repartidor';
+  }
+  if (repartidorCodigo && !/^R[A-Z0-9]{1,9}$/.test(repartidorCodigo)) {
+    errores.repartidorCodigo = 'El código de repartidor no tiene un formato válido';
+  }
+
+  return {
+    esValido: Object.keys(errores).length === 0,
+    errores,
+    datos: { rol, repartidorCodigo }
+  };
+}
+
+function validarEntradaCliente(body = {}, esActualizacion = false) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) body = {};
+  const errores = {};
+  const datos = {};
+
+  if (body.nombre !== undefined || !esActualizacion) {
+    const nombre = String(body.nombre ?? '').trim();
+    if (!nombre) errores.nombre = 'Ingresa el nombre del cliente';
+    else if (nombre.length > 120) errores.nombre = 'El nombre no puede superar 120 caracteres';
+    else datos.nombre = nombre;
+  }
+
+  if (body.telefono !== undefined) {
+    const telefono = String(body.telefono ?? '').trim();
+    if (telefono) {
+      const errTelefono = validarTelefono(telefono);
+      if (errTelefono) errores.telefono = errTelefono;
+      else datos.telefono = telefono;
+    } else {
+      datos.telefono = null;
+    }
+  }
+
+  if (body.direccion !== undefined) {
+    const direccion = String(body.direccion ?? '').trim();
+    if (direccion.length > 250) errores.direccion = 'La dirección no puede superar 250 caracteres';
+    else datos.direccion = direccion || null;
+  }
+
+  if (body.tipoCliente !== undefined || !esActualizacion) {
+    const tipoCliente = String(body.tipoCliente ?? 'residencial').trim().toLowerCase();
+    if (!TIPOS_CLIENTE.includes(tipoCliente)) {
+      errores.tipoCliente = 'El tipo de cliente debe ser residencial o comercial';
+    } else {
+      datos.tipoCliente = tipoCliente;
+    }
+  }
+
+  if (!esActualizacion && body.usuarioId !== undefined && body.usuarioId !== null) {
+    const usuarioId = Number(body.usuarioId);
+    if (!Number.isInteger(usuarioId) || usuarioId < 1) {
+      errores.usuarioId = 'El identificador de usuario debe ser un entero positivo';
+    } else {
+      datos.usuarioId = usuarioId;
+    }
+  }
+
+  if (esActualizacion && Object.keys(datos).length === 0 && Object.keys(errores).length === 0) {
+    errores.solicitud = 'Debes enviar al menos un campo para actualizar';
+  }
+
+  return { esValido: Object.keys(errores).length === 0, errores, datos };
 }
 
 function validarEntradaProducto(body = {}, esActualizacion = false) {
@@ -234,6 +418,10 @@ module.exports = {
   sanitizarUsuarioSalida,
   validarEntradaRegistro,
   validarEntradaLogin,
+  validarEntradaUsuario,
+  validarActualizacionUsuario,
+  validarCambioRol,
+  validarEntradaCliente,
   validarEntradaProducto,
   validarEntradaPedido
 };
