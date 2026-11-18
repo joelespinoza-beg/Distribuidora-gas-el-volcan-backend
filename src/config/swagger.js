@@ -1,0 +1,548 @@
+const swaggerSpec = {
+  openapi: '3.0.3',
+  info: {
+    title: 'API REST · Distribuidora de Gas El Volcán',
+    version: '1.0.0',
+    description:
+      'Especificación OpenAPI 3.0 del backend de **Distribuidora de Gas El Volcán** (Chillán). ' +
+      'Incluye autenticación y autorización con **JWT (HS256)**, protección de contraseñas con **BCrypt**, ' +
+      'catálogo de cilindros GLP y accesorios, gestión y seguimiento de pedidos con descuento de stock en el servidor ' +
+      'y control de acceso por roles (`CLIENTE`, `OPERADORA`, `REPARTIDOR`, `ADMIN`).'
+  },
+  servers: [
+    {
+      url: '/',
+      description: 'Servidor activo (EC2 o entorno local en puerto 3000)'
+    }
+  ],
+  tags: [
+    { name: 'Autenticación', description: 'Registro, inicio de sesión con JWT y perfil autenticado' },
+    { name: 'Productos', description: 'Catálogo público de cilindros/accesorios y CRUD administrativo' },
+    { name: 'Pedidos', description: 'Solicitud principal de gas, asignación de repartidor y seguimiento de entregas' },
+    { name: 'Repartidores', description: 'Consulta de repartidores activos para despacho' },
+    { name: 'Diagnóstico', description: 'Verificación de estado del servidor y saludo de laboratorio (Guía 18)' }
+  ],
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Ingresa el token JWT obtenido en POST /api/auth/login (formato: Bearer <token>)'
+      }
+    },
+    schemas: {
+      ErrorRespuesta: {
+        type: 'object',
+        properties: {
+          error: { type: 'string', example: 'Descripción del error ocurrido' },
+          detalles: {
+            type: 'object',
+            nullable: true,
+            additionalProperties: { type: 'string' }
+          }
+        }
+      },
+      RegistroSolicitud: {
+        type: 'object',
+        required: ['nombre', 'email', 'clave'],
+        properties: {
+          nombre: { type: 'string', example: 'Camila Riquelme' },
+          email: { type: 'string', format: 'email', example: 'camila.riquelme@correo.cl' },
+          clave: { type: 'string', minLength: 6, example: 'Segura2026!' }
+        }
+      },
+      LoginSolicitud: {
+        type: 'object',
+        required: ['email', 'clave'],
+        properties: {
+          email: { type: 'string', format: 'email', example: 'maria.soto@correo.cl' },
+          clave: { type: 'string', example: 'Cliente2026!' }
+        }
+      },
+      UsuarioPublico: {
+        type: 'object',
+        description: 'Datos públicos del usuario (generados/filtrados por el servidor; jamás incluye clave ni password_hash)',
+        properties: {
+          id: { type: 'integer', readOnly: true, example: 4 },
+          nombre: { type: 'string', example: 'María Soto (Cliente)' },
+          email: { type: 'string', example: 'maria.soto@correo.cl' },
+          rol: { type: 'string', enum: ['CLIENTE', 'OPERADORA', 'REPARTIDOR', 'ADMIN'], readOnly: true, example: 'CLIENTE' },
+          repartidorCodigo: { type: 'string', nullable: true, readOnly: true, example: null },
+          activo: { type: 'boolean', readOnly: true, example: true }
+        }
+      },
+      LoginRespuesta: {
+        type: 'object',
+        properties: {
+          accessToken: {
+            type: 'string',
+            example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+          },
+          tokenType: { type: 'string', example: 'Bearer' },
+          expiresIn: { type: 'integer', example: 3600 },
+          usuario: { $ref: '#/components/schemas/UsuarioPublico' }
+        }
+      },
+      Producto: {
+        type: 'object',
+        required: ['id', 'categoria', 'nombre', 'precioResidencial', 'precioComercial', 'stock'],
+        properties: {
+          id: { type: 'string', example: 'CL003' },
+          categoria: { type: 'string', example: 'Cilindros de Gas' },
+          nombre: { type: 'string', example: 'Cilindro GLP 15 kg' },
+          descripcion: { type: 'string', example: 'Cilindro de mayor capacidad para hogares de alto consumo.' },
+          unidad: { type: 'string', example: 'Unidad' },
+          precioResidencial: { type: 'integer', minimum: 1, example: 16000 },
+          precioComercial: { type: 'integer', minimum: 1, example: 14500 },
+          stock: { type: 'integer', minimum: 0, example: 90 }
+        }
+      },
+      PedidoCrearSolicitud: {
+        type: 'object',
+        required: ['cliente', 'telefono', 'direccion', 'zona', 'productos'],
+        properties: {
+          cliente: { type: 'string', example: 'María Soto' },
+          email: { type: 'string', format: 'email', example: 'maria.soto@correo.cl' },
+          telefono: { type: 'string', example: '+56 9 9123 4567' },
+          direccion: { type: 'string', example: 'Av. Libertad 123, Chillán' },
+          zona: { type: 'string', example: 'Zona Centro' },
+          tipoCliente: { type: 'string', enum: ['residencial', 'comercial'], example: 'residencial' },
+          metodoPago: { type: 'string', example: 'efectivo al recibir' },
+          productos: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['id', 'cantidad'],
+              properties: {
+                id: { type: 'string', example: 'CL003' },
+                cantidad: { type: 'integer', minimum: 1, example: 2 }
+              }
+            }
+          }
+        }
+      },
+      PedidoRespuesta: {
+        type: 'object',
+        description: 'El servidor calcula precioUnitario, subtotal, total, estado inicial, usuarioId y hora',
+        properties: {
+          id: { type: 'integer', readOnly: true, example: 1 },
+          usuarioId: { type: 'integer', readOnly: true, example: 4 },
+          cliente: { type: 'string', example: 'María Soto' },
+          email: { type: 'string', example: 'maria.soto@correo.cl' },
+          telefono: { type: 'string', example: '+56 9 9123 4567' },
+          direccion: { type: 'string', example: 'Av. Libertad 123, Chillán' },
+          zona: { type: 'string', example: 'Zona Centro' },
+          tipoCliente: { type: 'string', example: 'residencial' },
+          productos: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: 'CL003' },
+                nombre: { type: 'string', readOnly: true, example: 'Cilindro GLP 15 kg' },
+                cantidad: { type: 'integer', example: 2 },
+                precioUnitario: { type: 'integer', readOnly: true, example: 16000 },
+                subtotal: { type: 'integer', readOnly: true, example: 32000 }
+              }
+            }
+          },
+          total: { type: 'integer', readOnly: true, example: 32000 },
+          metodoPago: { type: 'string', example: 'efectivo al recibir' },
+          estado: { type: 'string', enum: ['pendiente', 'asignado', 'en_camino', 'entregado'], readOnly: true, example: 'pendiente' },
+          repartidorId: { type: 'string', nullable: true, readOnly: true, example: null },
+          hora: { type: 'string', readOnly: true, example: '14:35' }
+        }
+      }
+    }
+  },
+  paths: {
+    '/api/saludo': {
+      get: {
+        tags: ['Diagnóstico'],
+        summary: 'Saludo de verificación del servidor (Guía 18)',
+        parameters: [
+          {
+            name: 'nombre',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', example: 'Duoc' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Respuesta JSON confirmando ejecución en Node.js + Express',
+            content: {
+              'application/json': {
+                example: {
+                  mensaje: 'Hola, Duoc',
+                  backend: 'Node.js + Express en EC2',
+                  lenguaje: 'Node.js'
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/api/auth/register': {
+      post: {
+        tags: ['Autenticación'],
+        summary: 'Registrar nueva cuenta de cliente',
+        description: 'Crea un usuario con contraseña protegida mediante BCrypt. El servidor asigna siempre el rol inicial CLIENTE.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/RegistroSolicitud' }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Usuario registrado exitosamente (sin contraseña ni hash)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UsuarioPublico' }
+              }
+            }
+          },
+          400: {
+            description: 'Datos de entrada inválidos',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorRespuesta' } } }
+          },
+          409: {
+            description: 'El correo electrónico ya se encuentra registrado',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorRespuesta' } } }
+          }
+        }
+      }
+    },
+    '/api/auth/login': {
+      post: {
+        tags: ['Autenticación'],
+        summary: 'Iniciar sesión y obtener JWT firmado (HS256)',
+        description: 'Valida credenciales contra el hash BCrypt. Si fallan, devuelve 401 con mensaje genérico sin revelar si la cuenta existe.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/LoginSolicitud' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Autenticación exitosa: devuelve accessToken Bearer y vigencia',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LoginRespuesta' }
+              }
+            }
+          },
+          400: {
+            description: 'Formato de correo o clave inválido',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorRespuesta' } } }
+          },
+          401: {
+            description: 'Credenciales inválidas',
+            content: {
+              'application/json': {
+                example: { error: 'Credenciales inválidas' }
+              }
+            }
+          },
+          429: {
+            description: 'Límite de intentos fallidos superado'
+          }
+        }
+      }
+    },
+    '/api/auth/me': {
+      get: {
+        tags: ['Autenticación'],
+        summary: 'Obtener perfil del usuario autenticado',
+        description: 'Obtiene los datos del usuario a partir del claim sub del token JWT validado.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Perfil del usuario autenticado (sin contraseña ni hash)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UsuarioPublico' }
+              }
+            }
+          },
+          401: {
+            description: 'Token ausente, inválido o vencido'
+          }
+        }
+      }
+    },
+    '/api/productos': {
+      get: {
+        tags: ['Productos'],
+        summary: 'Listar catálogo de cilindros y accesorios',
+        parameters: [
+          {
+            name: 'categoria',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', example: 'Cilindros de Gas' }
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Lista de productos disponibles',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/Producto' }
+                }
+              }
+            }
+          }
+        }
+      },
+      post: {
+        tags: ['Productos'],
+        summary: 'Crear nuevo producto en el catálogo (Solo ADMIN)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/Producto' }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Producto creado exitosamente',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Producto' } } }
+          },
+          400: { description: 'Datos inválidos' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Sin permiso (requiere rol ADMIN)' },
+          409: { description: 'Conflicto: ya existe un producto con ese código' }
+        }
+      }
+    },
+    '/api/productos/{id}': {
+      get: {
+        tags: ['Productos'],
+        summary: 'Obtener detalle de un producto por su código',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', example: 'CL002' } }
+        ],
+        responses: {
+          200: {
+            description: 'Detalle del producto',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Producto' } } }
+          },
+          404: { description: 'Producto no encontrado' }
+        }
+      },
+      put: {
+        tags: ['Productos'],
+        summary: 'Actualizar producto existente (Solo ADMIN)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', example: 'CL002' } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/Producto' }
+            }
+          }
+        },
+        responses: {
+          200: { description: 'Producto actualizado' },
+          400: { description: 'Datos inválidos' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Sin permiso (requiere rol ADMIN)' },
+          404: { description: 'Producto no encontrado' }
+        }
+      },
+      delete: {
+        tags: ['Productos'],
+        summary: 'Eliminar producto del catálogo (Solo ADMIN)',
+        description: 'Elimina el producto si no posee pedidos históricos asociados (en caso contrario devuelve 409 Conflict).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', example: 'AC003' } }
+        ],
+        responses: {
+          204: { description: 'Producto eliminado correctamente (sin cuerpo)' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Sin permiso (requiere rol ADMIN)' },
+          404: { description: 'Producto no encontrado' },
+          409: { description: 'Conflicto de integridad: el producto tiene pedidos asociados' }
+        }
+      }
+    },
+    '/api/pedidos': {
+      get: {
+        tags: ['Pedidos'],
+        summary: 'Listar pedidos según el rol del usuario autenticado',
+        description: 'ADMIN y OPERADORA ven todos los pedidos; REPARTIDOR ve sus entregas asignadas; CLIENTE solo ve sus propios pedidos.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Lista de pedidos autorizados para el usuario',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/PedidoRespuesta' }
+                }
+              }
+            }
+          },
+          401: { description: 'No autenticado' }
+        }
+      },
+      post: {
+        tags: ['Pedidos'],
+        summary: 'Crear un nuevo pedido de gas (calcula precios y descuenta stock en el servidor)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/PedidoCrearSolicitud' }
+            }
+          }
+        },
+        responses: {
+          201: {
+            description: 'Pedido registrado con estado pendiente y stock descontado',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PedidoRespuesta' }
+              }
+            }
+          },
+          400: { description: 'Datos de entrada inválidos' },
+          401: { description: 'No autenticado' },
+          404: { description: 'Producto solicitado no existe' },
+          409: { description: 'Conflicto de negocio: stock insuficiente para completar el pedido' }
+        }
+      }
+    },
+    '/api/pedidos/{id}': {
+      get: {
+        tags: ['Pedidos'],
+        summary: 'Consultar detalle y seguimiento de un pedido por ID (con protección anti-IDOR)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer', example: 1 } }
+        ],
+        responses: {
+          200: {
+            description: 'Detalle del pedido',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/PedidoRespuesta' } } }
+          },
+          401: { description: 'No autenticado' },
+          403: { description: 'Acceso denegado: el pedido pertenece a otro cliente o repartidor' },
+          404: { description: 'Pedido no encontrado' }
+        }
+      }
+    },
+    '/api/pedidos/{id}/asignar': {
+      patch: {
+        tags: ['Pedidos'],
+        summary: 'Asignar repartidor a un pedido (Solo OPERADORA o ADMIN)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer', example: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['repartidorId'],
+                properties: {
+                  repartidorId: { type: 'string', example: 'R1' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: { description: 'Repartidor asignado y estado actualizado a asignado' },
+          400: { description: 'repartidorId ausente' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Rol insuficiente (requiere OPERADORA o ADMIN)' },
+          404: { description: 'Pedido o repartidor no encontrado' },
+          409: { description: 'Conflicto: el pedido ya fue entregado' }
+        }
+      }
+    },
+    '/api/pedidos/{id}/estado': {
+      patch: {
+        tags: ['Pedidos'],
+        summary: 'Actualizar estado de entrega del pedido (OPERADORA, REPARTIDOR asignado o ADMIN)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer', example: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['estado'],
+                properties: {
+                  estado: {
+                    type: 'string',
+                    enum: ['pendiente', 'asignado', 'en_camino', 'entregado'],
+                    example: 'en_camino'
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: { description: 'Estado actualizado correctamente' },
+          400: { description: 'Estado inválido' },
+          401: { description: 'No autenticado' },
+          403: { description: 'Rol insuficiente o pedido asignado a otro repartidor' },
+          404: { description: 'Pedido no encontrado' }
+        }
+      }
+    },
+    '/api/repartidores': {
+      get: {
+        tags: ['Repartidores'],
+        summary: 'Listar repartidores activos (OPERADORA, REPARTIDOR o ADMIN)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Lista de repartidores',
+            content: {
+              'application/json': {
+                example: [
+                  { id: 'R1', nombre: 'Pedro Rojas', telefono: '+56 9 8111 2233', activo: true },
+                  { id: 'R2', nombre: 'Luis Contreras', telefono: '+56 9 8222 3344', activo: true },
+                  { id: 'R3', nombre: 'Marcos Fuentes', telefono: '+56 9 8333 4455', activo: true }
+                ]
+              }
+            }
+          },
+          401: { description: 'No autenticado' },
+          403: { description: 'Sin permiso' }
+        }
+      }
+    }
+  }
+};
+
+module.exports = swaggerSpec;
