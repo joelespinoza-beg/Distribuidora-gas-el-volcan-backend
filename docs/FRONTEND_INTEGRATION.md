@@ -10,7 +10,7 @@ Este archivo guía el trabajo futuro en el repositorio del frontend. **No se imp
 - `POST /auth/login`: enviar `email` y `clave`. La respuesta contiene `accessToken`, `tokenType`, `expiresIn` y `usuario`.
 - `GET /auth/me`: enviar `Authorization: Bearer <accessToken>` para recuperar la cuenta al restaurar la sesión.
 - `GET /clientes/me` y `PATCH /clientes/me`: consultar y modificar el perfil del cliente autenticado.
-- Las rutas administrativas de usuarios y clientes requieren token y rol `ADMIN`. `GET/PATCH /usuarios/:id` permiten al usuario titular ver/modificar solo su propia cuenta; las demás cuentas deben rechazarse.
+- Las rutas administrativas de usuarios y clientes requieren token y rol `ADMIN`. `GET /usuarios/:id` permite al usuario titular consultar su cuenta; `PUT/PATCH /usuarios/:id` permiten modificar solo su propia cuenta o la cuenta de otro usuario cuando el actor es `ADMIN`.
 
 La respuesta del registro y de las rutas de usuario/cliente es el objeto directamente, sin envoltorio `data`. El backend nunca devuelve la contraseña ni su hash.
 

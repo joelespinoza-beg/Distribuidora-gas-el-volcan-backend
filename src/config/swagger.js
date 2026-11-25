@@ -676,6 +676,26 @@ const swaggerSpec = {
           404: { description: 'Usuario no encontrado' }
         }
       },
+      put: {
+        tags: ['Usuarios'],
+        summary: 'Modificar datos de cuenta (ADMIN o titular; no modifica rol)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UsuarioActualizacion' }
+            }
+          }
+        },
+        responses: {
+          200: { description: 'Cuenta actualizada' },
+          400: { description: 'Datos inválidos' },
+          401: { description: 'No autenticado' },
+          403: { description: 'No se permite modificar otra cuenta' },
+          409: { description: 'El correo ya está registrado' }
+        }
+      },
       patch: {
         tags: ['Usuarios'],
         summary: 'Modificar datos de cuenta (ADMIN o titular; no modifica rol)',

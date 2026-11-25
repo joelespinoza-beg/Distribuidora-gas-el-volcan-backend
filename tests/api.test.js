@@ -46,6 +46,7 @@ describe('API Backend · Distribuidora de Gas El Volcán (Guías 18 y 19)', () =
     assert.ok(res.body.paths['/api/v1/auth/login']);
     assert.ok(res.body.paths['/api/v1/pedidos']);
     assert.ok(res.body.paths['/api/v1/usuarios']);
+    assert.ok(res.body.paths['/api/v1/usuarios/{id}'].put);
     assert.ok(res.body.paths['/api/v1/clientes']);
   });
 
@@ -303,6 +304,19 @@ describe('API Backend · Distribuidora de Gas El Volcán (Guías 18 y 19)', () =
       });
     assert.equal(creado.status, 201);
     assert.equal(creado.body.rol, 'CLIENTE');
+
+    const putAjeno = await request(app)
+      .put(`/api/v1/usuarios/${creado.body.id}`)
+      .set('Authorization', `Bearer ${tokenCliente}`)
+      .send({ nombre: 'Cambio no autorizado' });
+    assert.equal(putAjeno.status, 403);
+
+    const actualizadoConPut = await request(app)
+      .put(`/api/v1/usuarios/${creado.body.id}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ nombre: 'Cuenta actualizada con PUT' });
+    assert.equal(actualizadoConPut.status, 200);
+    assert.equal(actualizadoConPut.body.nombre, 'Cuenta actualizada con PUT');
 
     const actualizado = await request(app)
       .patch(`/api/v1/usuarios/${creado.body.id}`)
