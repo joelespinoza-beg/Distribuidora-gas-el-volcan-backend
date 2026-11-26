@@ -96,8 +96,27 @@ function requerirRoles(...rolesPermitidos) {
   };
 }
 
+function requerirPropietarioOAdmin(parametroId = 'id') {
+  return (req, res, next) => {
+    if (!req.usuario) {
+      return res.status(401).json({ error: 'No autenticado' });
+    }
+    if (req.usuario.rol === 'ADMIN') {
+      return next();
+    }
+    const usuarioSolicitado = Number(req.params[parametroId]);
+    if (!Number.isInteger(usuarioSolicitado) || usuarioSolicitado !== Number(req.usuario.id)) {
+      return res.status(403).json({
+        error: 'Acceso denegado: solo puedes consultar o modificar tu propia cuenta'
+      });
+    }
+    return next();
+  };
+}
+
 module.exports = {
   obtenerConfiguracionJwt,
   verificarToken,
-  requerirRoles
+  requerirRoles,
+  requerirPropietarioOAdmin
 };

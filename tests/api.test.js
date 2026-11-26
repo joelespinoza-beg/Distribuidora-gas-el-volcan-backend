@@ -39,6 +39,29 @@ describe('API Backend · Distribuidora de Gas El Volcán (Guías 18 y 19)', () =
     assert.equal(noExiste.body.error, 'Ruta no encontrada');
   });
 
+  it('1.1. Privacidad de rutas: rechaza recursos privados sin JWT y mantiene público el catálogo', async () => {
+    const rutasPrivadas = [
+      ['/api/v1/auth/me', 'get'],
+      ['/api/v1/usuarios', 'get'],
+      ['/api/v1/clientes/me', 'get'],
+      ['/api/v1/pedidos', 'get'],
+      ['/api/v1/repartidores', 'get']
+    ];
+
+    for (const [ruta, metodo] of rutasPrivadas) {
+      const respuesta = await request(app)[metodo](ruta);
+      assert.equal(respuesta.status, 401, `${metodo.toUpperCase()} ${ruta} debe requerir JWT`);
+    }
+
+    const mutacionProducto = await request(app)
+      .post('/api/v1/productos')
+      .send({ id: 'SIN-TOKEN' });
+    assert.equal(mutacionProducto.status, 401);
+
+    const catalogo = await request(app).get('/api/v1/productos');
+    assert.equal(catalogo.status, 200);
+  });
+
   it('2. Swagger / OpenAPI: expone la especificación viva en /api-docs.json', async () => {
     const res = await request(app).get('/api-docs.json');
     assert.equal(res.status, 200);

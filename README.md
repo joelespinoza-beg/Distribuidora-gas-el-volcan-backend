@@ -26,13 +26,13 @@ Este repositorio contiene exclusivamente el **backend API REST**, la capa de per
 | **Repositorio y estructura por capas (`src/`)** | **Implementado y probado** | Separación en `routes`, `controllers`, `services`, `repositories`, `middlewares`, `models` y `config`. |
 | **Esquema SQL y datos semilla (`sql/schema_and_seed.sql`)** | **Implementado; migración pendiente de ejecutar en RDS** | Tablas `usuarios`, `roles`, `clientes`, `repartidores`, `productos`, `pedidos` y `detalle_pedidos` con PK, FK y restricciones `CHECK`/`UNIQUE`. |
 | **Conexión a PostgreSQL (`pg.Pool`) + modo local** | **Implementado y probado** | Configuración lista para Amazon RDS mediante variables de entorno (`.env`) y respaldo en memoria para pruebas automatizadas. |
-| **Autenticación JWT y hash BCrypt (`/api/v1/auth/*`)** | **Implementado; regresión pendiente de ejecutar** | `POST /api/v1/auth/register`, `POST /api/v1/auth/login` y `GET /api/v1/auth/me` con firma `HS256`, validación de `iss`/`aud`/`exp` y rate limit. |
-| **CRUD de usuarios y roles (`/api/v1/usuarios`)** | **Implementado; pruebas pendientes de ejecutar** | Rutas protegidas, cuatro roles persistidos, modificación segura y desactivación que conserva los pedidos. |
-| **CRUD de clientes (`/api/v1/clientes`)** | **Implementado; pruebas pendientes de ejecutar** | Perfiles vinculados opcionalmente a cuentas, acceso propio o administrativo y datos de pedido independientes del perfil. |
+| **Autenticación JWT y hash BCrypt (`/api/v1/auth/*`)** | **Implementado y probado** | `POST /api/v1/auth/register`, `POST /api/v1/auth/login` y `GET /api/v1/auth/me` con firma `HS256`, validación de `iss`/`aud`/`exp` y rate limit. |
+| **CRUD de usuarios y roles (`/api/v1/usuarios`)** | **Implementado y probado** | Rutas protegidas por JWT y rol, propiedad de cuenta o administración, cuatro roles persistidos y desactivación que conserva los pedidos. |
+| **CRUD de clientes (`/api/v1/clientes`)** | **Implementado y probado** | Perfiles vinculados opcionalmente a cuentas, acceso propio o administrativo y datos de pedido independientes del perfil. |
 | **CRUD de Catálogo de Productos (`/api/v1/productos/*`)** | **Implementado y probado** | Lectura pública y creación/edición/eliminación restringida a rol `ADMIN`, con validación de integridad referencial (`409`). |
 | **Flujo de Pedidos y Despacho (`/api/v1/pedidos/*`)** | **Implementado y probado** | Cálculo de precios en servidor según `tipoCliente`, descuento atómico de stock, asignación de repartidor, cambio de estado y protección anti-IDOR. |
-| **Documentación viva Swagger UI (`/api-docs`)** | **Implementada; verificación pendiente** | Especificación OpenAPI 3.0.3 interactiva con rutas canónicas `/api/v1`, esquema `BearerAuth` y ejemplos del negocio. |
-| **Suite de pruebas automatizadas (`tests/api.test.js`)** | **Ampliada; ejecución pendiente** | Se agregaron casos de usuarios, clientes, roles y rutas v1; ejecutar `npm test` cuando Node.js esté disponible. |
+| **Documentación viva Swagger UI (`/api-docs`)** | **Implementada y probada** | Especificación OpenAPI 3.0.3 interactiva con rutas canónicas `/api/v1`, esquema `BearerAuth` y ejemplos del negocio. |
+| **Suite de pruebas automatizadas (`tests/api.test.js`)** | **Implementada y aprobada** | Casos de usuarios, clientes, roles, rutas privadas, rutas v1 y reglas de negocio ejecutados con `npm test`. |
 | **Consumo desde el repositorio Frontend React** | **Pendiente (fuera de este cambio backend)** | Axios/fetch, persistencia de sesión tras recarga y restricciones de interfaz; lista de trabajo en `docs/FRONTEND_INTEGRATION.md`. |
 
 ### Alcance del Desarrollador 1 y versionado
@@ -341,8 +341,9 @@ El frontend **no decide por sí solo el precio final, el rol del usuario ni la p
 La API incluye su especificación **OpenAPI 3.0.3** en [`src/config/swagger.js`](file:///home/ubuntu/Distribuidora-gas-el-volcan-backend/src/config/swagger.js) y la expone mediante **Swagger UI**:
 
 - **Ruta interactiva en navegador (local o túnel VS Code):** `http://localhost:3000/api-docs`
-- **Ruta interactiva desde la IP pública de EC2:** `http://<IP_PUBLICA_EC2>:3000/api-docs`
-- **Especificación OpenAPI en formato JSON:** `http://localhost:3000/api-docs.json`
+- **Ruta interactiva desde la IP elástica de EC2:** `http://3.227.14.44:3000/api-docs`
+- **Especificación OpenAPI en formato JSON (local):** `http://localhost:3000/api-docs.json`
+- **Especificación OpenAPI desde EC2:** `http://3.227.14.44:3000/api-docs.json`
 
 **Cómo probar endpoints protegidos desde Swagger UI:**
 1. En modo local (`DB_MODE=memory`), ejecutar `POST /api/v1/auth/login` con una cuenta de demostración (por ejemplo `maria.soto@correo.cl` / `Cliente2026!`). En PostgreSQL/RDS, iniciar sesión con el administrador aprovisionado mediante `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_PASSWORD`.
@@ -630,6 +631,9 @@ npm install
 cp .env.example .env
 # Configurar DB_HOST, DB_USER, DB_PASSWORD y un JWT_SECRET aleatorio de al menos 32 caracteres.
 # Para PostgreSQL, también definir DB_MODE=postgres y las variables BOOTSTRAP_ADMIN_* del primer administrador.
+# En EC2, mantener HOST=0.0.0.0 y PUBLIC_BASE_URL=http://3.227.14.44:3000.
+# CORS_ORIGINS debe contener el origen del frontend (por ejemplo, http://IP_PUBLICA_FRONTEND),
+# no la URL del backend, salvo que ambos estén servidos desde el mismo origen.
 
 # 3. Ejecutar la suite completa de pruebas automatizadas
 npm test
@@ -643,6 +647,9 @@ npm start
 ```bash
 # Verificar estado del servidor y saludo (Guía 18)
 curl -i "http://localhost:3000/api/v1/saludo?nombre=Duoc"
+
+# Desde otro equipo, comprobar el backend desplegado en EC2
+curl -i "http://3.227.14.44:3000/api/v1/health"
 
 # Consultar catálogo de productos
 curl -i "http://localhost:3000/api/v1/productos"
